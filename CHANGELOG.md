@@ -2,6 +2,31 @@
 
 All notable changes to Amandle. Versions follow [SemVer](https://semver.org/).
 
+## [0.4.0] - 2026-11-03
+
+### Added
+- פול טראנק (#24) and אביהו פנחסוב (מועדון הקצב, #74), plus known names that
+  are below the listener floor: אבי ביטר, שי גבסו, אלישע בנאי, חן אהרוני,
+  שירה מרגלית, מאי ספדיה, אלין גולן, ניב דמירל, נופיה, אליאב זוהר, עטרה
+  אוריה, עדן דרסו, איציק שמלי and מאור אשכנזי. The pool is now 273 artists;
+  72 of them hand-checked.
+
+## [0.3.0] - 2026-11-03
+
+### Added
+- 11 more well-known artists: איב אנד ליר, קוקי לבנה, עומרי סבח, אתניקס,
+  כנסיית השכל, קובי אפללו, עופר לוי, מידד טסה, בנזין, איציק קלה and
+  שימי תבורי. The pool is now 257 artists; 56 of them hand-checked.
+
+## [0.2.0] - 2026-11-03
+
+### Added
+- 20 artists trending in Israel (Spotify Israel charts) that were missing:
+  סטילה, נס, יאנג בוטה, שרק, גל אדם, ישי לוי, וייב איש, נורוז, גלעד שגב,
+  מאור אדרי, יונתן קלימי, רון בוחניק, ניר כנען, מושיקו מור, ענבל ביבי,
+  נוי פדלון, כפיר צפריר, דודו פארוק, אלה לי and אמיר ובן. The pool is now
+  246 artists; 45 of them hand-checked.
+
 ## [0.1.1] - 2026-11-03
 
 ### Fixed
