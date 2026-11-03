@@ -2,6 +2,17 @@
 
 All notable changes to Amandle. Versions follow [SemVer](https://semver.org/).
 
+## [0.1.1] - 2026-11-03
+
+### Fixed
+- איתי לוי: age (Wikidata has his birth as 1888 instead of 1988) and picture
+  (the Deezer name search found an empty "Itay Levi" profile; his is "Itay Levy").
+- אייל גולן and אליעד נחום: career-start years that came before they were 8.
+- Deezer lookups now take the exact-name match with the most fans, not the
+  first result, so an empty duplicate profile can't supply the photo.
+- An age over 100 for a living artist counts as unknown, so a date typo can't
+  reach a tile.
+
 ## [0.1.0] - 2026-11-02
 
 First versioned release.

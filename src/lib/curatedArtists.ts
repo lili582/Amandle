@@ -55,6 +55,12 @@ export const CURATED_ARTISTS: readonly CuratedArtist[] = [
   { qid: 'Q114558299', nameHe: 'מאיה דדון', nameEn: 'Maya Dadon', spotify: '2CFhpsYDfBaq8q9enYLdBG', type: 'solo', members: 1, gender: 'female', genre: 'mizrahi', debut: 2022, breakthrough: 2022, born: 2006 },
   { qid: 'Q111792269', nameHe: 'נונו', nameEn: 'Nunu', spotify: '0wJDdyoTfE5SuqPNFvi2lG', type: 'solo', members: 1, gender: 'female', genre: 'pop', debut: 2021, breakthrough: 2021, born: 1998 },
   { qid: 'Q124013991', nameHe: 'יגל אושרי', nameEn: 'Yagel Oshri', spotify: '6Kn2CjfEButrWXszsA0E6Q', type: 'solo', members: 1, gender: 'male', genre: 'pop', debut: 2021, breakthrough: 2021, born: 2000 },
+  // Already in the pool, but with wrong Wikidata dates: איתי לוי's birth is
+  // recorded as 1888 (typo for 1988); אייל גולן's and אליעד נחום's debut came
+  // out before they were 8.
+  { qid: 'Q21570437', nameHe: 'איתי לוי', nameEn: 'Itay Levi', spotify: '6VdxGMRiiFQhI8F0FkuQZg', type: 'solo', members: 1, gender: 'male', genre: 'mizrahi', debut: 2013, breakthrough: 2013, born: 1988, aliases: ['Itay Levy'] },
+  { qid: 'Q1382405', nameHe: 'אייל גולן', nameEn: 'Eyal Golan', spotify: '54jZWpivOTllo1afYNSx5U', type: 'solo', members: 1, gender: 'male', genre: 'mizrahi', debut: 1997, breakthrough: 1997, born: 1971 },
+  { qid: 'Q6741400', nameHe: 'אליעד נחום', nameEn: 'Eliad Nachum', spotify: '3F78m0H4Y4a1Dvd79TKVvw', type: 'solo', members: 1, gender: 'male', genre: 'pop', debut: 2011, breakthrough: 2015, born: 1990, aliases: ['אליעד'] },
   { qid: 'Q111087', nameHe: 'עפרה חזה', nameEn: 'Ofra Haza', spotify: '6tOL5L1TlmBLdFMeEoXgae', type: 'solo', members: 1, gender: 'female', genre: 'mizrahi', debut: 1974, breakthrough: 1980, born: 1957, died: 2000 },
 ]
 
@@ -94,6 +100,8 @@ export function curatedArtist(c: CuratedArtist, base?: Artist): Artist {
 
 // Deezer profiles that the name search gets wrong (a stray duplicate profile
 // with the wrong picture and songs). QID -> the artist's real Deezer id.
+// Pinned ids skip the name search entirely.
 export const DEEZER_IDS: Readonly<Record<string, number>> = {
   Q26833615: 406841282, // סטטיק: 8341014 is a stray "סטטיק" profile (40 fans, wrong photo)
+  Q21570437: 10348162, // איתי לוי is "Itay Levy" there; "Itay Levi" (0 fans) is someone else
 }

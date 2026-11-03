@@ -234,14 +234,19 @@ async function fromDeezer(a: Artist, dzGet: DeezerGet = jsonp): Promise<Enrichme
   if (deezerId) {
     artist = await dzGet<DzArtist>(`${DEEZER}/artist/${deezerId}`)
   } else {
-    const names = [a.nameHe, a.nameEn].filter((x): x is string => Boolean(x))
-    for (const name of names) {
+    // Search every name and keep the exact match with the most fans: an
+    // empty duplicate profile with the same name (and someone else's photo)
+    // must not win just because its search came back first.
+    const names = [a.nameHe, a.nameEn, ...(a.aliases ?? [])].filter((x): x is string => Boolean(x))
+    const wanted = new Set(names.map(normalizeHe))
+    for (const name of [a.nameHe, a.nameEn].filter((x): x is string => Boolean(x))) {
       const r = await dzGet<{ data?: DzArtist[] }>(
-        `${DEEZER}/search/artist?q=${encodeURIComponent(name)}&limit=5`,
+        `${DEEZER}/search/artist?q=${encodeURIComponent(name)}&limit=10`,
       )
-      const wanted = names.map(normalizeHe)
-      artist = r.data?.find((d) => wanted.includes(normalizeHe(d.name)))
-      if (artist) break
+      for (const d of r.data ?? []) {
+        if (!wanted.has(normalizeHe(d.name))) continue
+        if (!artist || (d.nb_fan ?? 0) > (artist.nb_fan ?? 0)) artist = d
+      }
     }
   }
   if (!artist?.id) return {}

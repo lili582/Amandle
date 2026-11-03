@@ -758,3 +758,17 @@ enough; the next `npm run build:pool` regenerates it the same way.
 
 Also fixed `tests/storage.test.ts`, which used a fixed "fresh" date
 (2026-10-01) that went stale and failed from November.
+
+
+## Date typos and Deezer duplicates (2026-11-03)
+
+The owner reported איתי לוי's age and picture wrong. Wikidata has his birth as
+1888 (a typo for 1988), so the age tile said 138; and the Deezer name search
+matched "Itay Levi", an empty profile with someone else's photo (his real one
+is "Itay Levy", 26K fans). Fixes: איתי לוי, אייל גולן and אליעד נחום (debut
+years before age 8) are now in curatedArtists.ts; DEEZER_IDS pins איתי לוי's
+profile; the Deezer search keeps the exact-name match with the most fans; and
+complete.ts treats a living artist older than MAX_AGE (100) as having no known
+age, so the next typo keeps the artist out instead of showing a wrong tile.
+Pictures in pool.json already came from Spotify; the live site still used
+Deezer because the 2026-11-02 changes weren't deployed yet.
