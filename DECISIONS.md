@@ -758,3 +758,47 @@ enough; the next `npm run build:pool` regenerates it the same way.
 
 Also fixed `tests/storage.test.ts`, which used a fixed "fresh" date
 (2026-10-01) that went stale and failed from November.
+
+
+## Date typos and Deezer duplicates (2026-11-03)
+
+The owner reported איתי לוי's age and picture wrong. Wikidata has his birth as
+1888 (a typo for 1988), so the age tile said 138; and the Deezer name search
+matched "Itay Levi", an empty profile with someone else's photo (his real one
+is "Itay Levy", 26K fans). Fixes: איתי לוי, אייל גולן and אליעד נחום (debut
+years before age 8) are now in curatedArtists.ts; DEEZER_IDS pins איתי לוי's
+profile; the Deezer search keeps the exact-name match with the most fans; and
+complete.ts treats a living artist older than MAX_AGE (100) as having no known
+age, so the next typo keeps the artist out instead of showing a wrong tile.
+Pictures in pool.json already came from Spotify; the live site still used
+Deezer because the 2026-11-02 changes weren't deployed yet.
+
+
+## More trending artists (2026-11-03)
+
+Went through every Israeli artist on the Spotify Israel weekly charts
+(kworb.net, all-time totals) who was not in the pool, checked each against
+Hebrew Wikipedia and their Spotify profile, and added the 20 with a
+Wikipedia article and enough listeners (mostly 60K+ monthly, nearly all of
+them in Israel) to curatedArtists.ts. Left out: chart names with no Hebrew
+Wikipedia article (so no checkable birth/debut year: עידו מלכה, שירז אברהם,
+בנאל בן ציון, אדם זרו, הגר יפת and others), producers/DJs, compilations and
+artists below ~45K monthly listeners (אליאב זוהר, עטרה אוריה, שירה מרגלית,
+חן אהרוני, מאי ספדיה, אלין גולן, עדן אלנה, ניב דמירל, אלישע בנאי, נופיה).
+
+Second pass the same day (owner asked for איב אנד ליר, קוקי לבנה, נונו and more
+known names): נונו was already in (rank ~200). Added איב אנד ליר and קוקי לבנה
+(member count from the Hebrew Wikipedia infobox) plus well-known acts with
+100K+ monthly listeners that were missing: אתניקס, עומרי סבח, כנסיית השכל,
+קובי אפללו, עופר לוי, מידד טסה, and the classics בנזין, איציק קלה, שימי תבורי.
+Left out: no Wikipedia article (הגר יפת, עידו מלכה, התאומים, אביחי שלמה),
+mostly-abroad audience (איציק דדיה, גד אלבז: < 50% of top-city listeners in
+Israel), and low Spotify numbers for the profile found (קובי אוז, אביהו מדינה,
+אבי ביטר, שי גבסו, עדן דרסו, יהודה סעדו, איציק שמלי, טל גורדון).
+
+Third pass (owner asked for פול טראנק, אביהו פנחסוב, אבי ביטר and more): added
+those three plus the earlier left-outs that have a checkable Wikipedia article
+but few Spotify listeners. פול טראנק sings mostly in English; added anyway on
+the owner's request (it is one of the most-streamed Israeli acts in Israel).
+אביהו פנחסוב is the Spotify profile of his band מועדון הקצב (8 members), so
+the entry is a band; the band name is a search alias.

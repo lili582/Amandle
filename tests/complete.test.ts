@@ -9,6 +9,11 @@ describe('missingDetails', () => {
     expect(missingDetails(makeArtist({ id: 'a', nameHe: 'a', birthYear: undefined }))).toEqual(['age'])
     expect(missingDetails(makeArtist({ id: 'a', nameHe: 'a', birthYear: 1980, genderKnown: false }))).toEqual(['gender'])
   })
+  it('treats an impossible age as unknown (Wikidata typo 1888 for 1988)', () => {
+    expect(missingDetails(makeArtist({ id: 'a', nameHe: 'a', birthYear: 1888 }))).toEqual(['age'])
+    // A singer who died long ago keeps the age they died at.
+    expect(missingDetails(makeArtist({ id: 'a', nameHe: 'a', birthYear: 1900, diedYear: 1970, debutYear: 1930 }))).toEqual([])
+  })
   it('needs a popularity rank', () => {
     expect(missingDetails(makeArtist({ id: 'a', nameHe: 'a', birthYear: 1980, popularityRank: 0 }))).toEqual(['popularity'])
   })

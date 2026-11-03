@@ -1,6 +1,8 @@
 import type { Artist, TileField } from '../types'
 import { artistAge, breakthroughOf } from './age'
 
+export const MAX_AGE = 100
+
 // The single rule for "every tile has a real value" (no "—", no "להקה"
 // placeholder, no guessed gender). Only such artists enter the pool, so every
 // guess gets a full row and the year / age tiles always have something to
@@ -13,7 +15,10 @@ export function missingFields(a: Artist, thisYear = new Date().getFullYear()): T
   if (!(Number.isFinite(a.popularityRank) && a.popularityRank >= 1)) missing.push('popularity')
   if (!a.genderKnown) missing.push('gender')
   if (!a.primaryGenre) missing.push('genre')
-  if (artistAge(a, thisYear) <= 0) missing.push('age')
+  // An impossible age (a living singer born in 1888 - a Wikidata typo for
+  // 1988) counts as unknown, so it never reaches a tile.
+  const age = artistAge(a, thisYear)
+  if (age <= 0 || age > MAX_AGE) missing.push('age')
   return missing
 }
 

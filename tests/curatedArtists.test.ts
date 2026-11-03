@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { CURATED_ARTISTS, curatedArtist, curatedFor, DEEZER_IDS } from '../src/lib/curatedArtists'
 import { isComplete } from '../src/lib/complete'
 import { GENRE_RULES } from '../src/lib/genreRules'
-import { applyEnrichment } from '../src/lib/enrich'
+import { applyEnrichment, fetchEnrichment } from '../src/lib/enrich'
 import { makeArtist } from './fixtures'
 
 const THIS_YEAR = 2026
@@ -50,5 +50,25 @@ describe('curated artists', () => {
     applyEnrichment(a, { imageUrl: 'https://cdn-images.dzcdn.net/wrong.jpg', deezerId: 8341014 })
     expect(a.imageUrl).toBe('https://i.scdn.co/image/static')
     expect(a.ids.deezer).toBe(DEEZER_IDS.Q26833615)
+  })
+
+  it('picks the Deezer profile with the most fans among exact name matches', async () => {
+    const urls: string[] = []
+    const dzGet = async <T,>(url: string): Promise<T> => {
+      urls.push(url)
+      if (url.includes('/search/artist')) {
+        return {
+          data: [
+            { id: 1, name: 'Itay Levi', nb_fan: 0, picture_medium: 'wrong.jpg' },
+            { id: 2, name: 'Itay Levi', nb_fan: 26_000, picture_medium: 'right.jpg' },
+          ],
+        } as T
+      }
+      return { data: [] } as T
+    }
+    const a = makeArtist({ id: 'Q1', nameHe: 'זמר', nameEn: 'Itay Levi', ids: { wikidata: 'Q1' } })
+    const { e } = await fetchEnrichment(a, { dzGet, fetchImpl: (async () => new Response('{}')) as typeof fetch })
+    expect(e.deezerId).toBe(2)
+    expect(e.imageUrl).toBe('right.jpg')
   })
 })
