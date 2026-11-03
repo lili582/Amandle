@@ -156,7 +156,96 @@
       (seeded shuffle, so an unchanged eligible set is stable). After launch
       the schedule must be treated as frozen/append-only.
 
-    Result: pool 1000, answer-eligible/schedule 912.
+Result: pool 1000, answer-eligible/schedule 912.
+
+## 20. Pool = top 1000 Israeli artists on Spotify, built nightly (2026-10-14)
+
+The pool is again the 1000 Israeli artists with the most Spotify monthly
+listeners (Spotle's own metric), and that order is `popularityRank`.
+
+- Spotify's Web API can't rank artists: the Feb 2026 dev-mode changes removed
+  artist `popularity` and `followers`. Kworb's Israeli chart has only ~100–200
+  Israeli artists. So the build reads monthly listeners from each artist's
+  public page. That is unofficial, against Spotify's terms, and can break when
+  the page changes.
+- Update (same day): Wikidata's genre is no longer required in the Spotify
+  build. Requiring it kept only 531 of ~1,070 Israeli artists with a Spotify id
+  and dropped big names (e.g. Osher Cohen, who also has only 2 sitelinks).
+  Missing genres are inferred from occupation (rapper -> hiphop, DJ ->
+  electronic, cantor -> religious-pop, else pop).
+- Update: Wikidata's Spotify links are the real bottleneck: ~1,600 Israeli
+  musicians with a Hebrew article have no P1902, including Eden Ben Zaken,
+  Kobi Peretz, Nasrin Kadri and Ben Zur. The build now searches Spotify for
+  each by name and accepts only an exact name match (Hebrew title or English
+  label, niqqud and punctuation ignored); about half match. Unmatched names
+  stay out rather than risk a wrong artist.
+- Update: "Hebrew artists" = artists whose Wikidata languages (P1412) are
+  either not listed or include Hebrew; 30 were dropped (Morgenshtern, French-
+  and Arabic-only singers...). Linet is kept by hand (listed as Turkish only).
+  English-singing Israeli acts (Temper City, Dennis Lloyd, Asaf Avidan) and
+  instrumental acts stay in: they are Israeli and Wikidata can't tell the
+  language they sing in.
+- Update: a plain HTTP fetch of the artist page has no listener count (the web
+  player renders it), so the build renders pages in headless Chromium via
+  Playwright.
+- Candidates = Israeli music artists on Wikidata with a Hebrew Wikipedia
+  article and a Spotify id (P1902), sitelinks floor lowered 3 → 1 (Spotify
+  decides notability now). Artists with several Spotify ids use the biggest one.
+- Not reachable from the browser (no CORS on open.spotify.com), so this is a
+  nightly GitHub Action (`scripts/build-pool.ts`) that writes
+  `data/pool.json` into the deploy. It is generated, never committed, so the
+  "no committed JSON" rule from #19 still holds.
+- Runs at 00:07 Israel time (two UTC crons + an hour guard for DST). A run with
+  < 300 ranked artists fails and deploys nothing. The daily answer still uses
+  rendezvous hashing over the top 250, so nightly ranking drift only moves the days
+  a marginal artist would have won.
+- Without `pool.json` (local dev) the client falls back to the #19 live
+  Wikidata + page-views pool. `DATA_SCHEMA_VERSION` bumped to v5 (v6 after the genre and Hebrew fixes).
+
+## 19. The whole collection pipeline was deleted; Wikidata is queried at run time
+
+  This supersedes decisions 8, 17 and 18, and most of sections 5, 6 and 7 of the
+  spec. The owner chose **"browser-only cache, no seed"**: nothing collected is
+  committed, there is no build-time data step, and there are no API keys.
+
+  **What shipped**
+  - `src/lib/wikidata.ts` — one SPARQL query to `query.wikidata.org`, which
+    serves `Access-Control-Allow-Origin: *`, so it runs straight from the
+    browser with no proxy. Retries 3x with backoff (WDQS returns 504/403 under
+    load).
+  - `src/lib/idb.ts` + `src/lib/dataLoader.ts` — memory → IndexedDB (24h TTL) →
+    network → stale cache. Only the rules ship in the repo:
+    `src/data/{genre-map,city-region,famous-songs,overrides}.json`.
+  - Deleted: `scripts/00-09`, `scripts/common.ts`, `scripts/music-cat.ts`,
+    `data/raw/`, `public/data/`, `data/seed-names.json`, the review report, the
+    curation worksheet, the `data`/`data:*` npm scripts, and `tests/musicCat.test.ts`.
+
+  **What it cost**
+  - First load is a live query: measured 6–30s. Cached loads are instant.
+  - A roster change can reshuffle future daily answers, because the schedule is
+    a seeded shuffle over whatever resolved. Days are still stable while the
+    cache holds.
+  - Spotify/Kworb, MusicBrainz, Deezer and Last.fm are all gone. Popularity is
+    Wikidata sitelinks with the QID as tie-break, so it is a rough proxy for
+    notability rather than listenership.
+  - `answerEligible` is now `true` for every pooled artist (438), where the old
+    pipeline excluded ~half as insufficiently measured. Notability is the
+    ≥3-sitelinks floor instead. Still open whether every one of the 438 is a
+    fair daily answer.
+
+  **Two real bugs this surfaced**
+  - MusicBrainz was overriding `P31`, which is why solo artists like `סקאזי`
+    were flagged as bands with `mixed` gender. Group kind now comes from `P31`
+    only.
+  - A solo artist with no `P21` was being defaulted to `male`. That silently
+    mislabelled real artists, so an absent or unintelligible `P21` now yields
+    `mixed`; known corrections live in `overrides.json`.
+
+  **`Genre` lost its `"other"` member.** Every pooled artist resolves to one of
+  the eleven labelled genres or is dropped, which also filters out writers and
+  painters (whose `P136` is literary) and films/TV series (which carry music
+  genres but are not artists). `formatTile` renders an unrecognised key verbatim
+  instead of collapsing it into an אחר bucket.
 
 ## 18. Pool membership = Israeli *and* recognised as a music artist
 
@@ -503,3 +592,169 @@ a real breakthrough year per artist (expensive - it is a judgement about which
 release made someone famous), drop the tile, or replace it with something the
 data can actually support (most-streamed track's release year, say). Until one of
 those happens the honest description is that the game shows the debut tile twice.
+
+## Every pooled artist has all six tiles (2026-10-21)
+
+The shipped pool (976 artists) had 433 with at least one tile showing "—":
+365 with no career-start year (breakthrough tile), 64 bands with no member
+count, 58 groups with unknown gender, 33 with no birth/formation year (age).
+An unknown tile is gray forever, so it gives the player nothing, and as the
+daily answer it makes the puzzle unfair.
+
+Decision: completeness is a pool entry requirement, not a display problem.
+
+- `src/lib/complete.ts` (`missingFields`, `isComplete`) is the single rule.
+- `src/lib/fill.ts` fills gaps at build time from MusicBrainz (lineup, member
+  genders, life-span begin = birth/formation year, first album/EP) and Deezer
+  (earliest non-compilation release). Same plausibility guards as before: no
+  career start before age 5, nothing in the future. For a group, formation year
+  and first release stand in for each other when only one is known.
+- `build-pool.ts` walks artists by Spotify listeners and keeps the first
+  POOL_SIZE complete ones; an incomplete artist is replaced by the next one
+  instead of shrinking the pool.
+- The client filters incomplete artists too (`dataLoader.ts`), and
+  DATA_SCHEMA_VERSION went to v8 so cached pools with gaps are discarded.
+
+Also restored in `src/lib/wikidata.ts`: `poolQuery`, `fetchPoolRows`,
+`spotifyIdsByQid`, `nonHebrewQids`, `matchesCandidate`,
+`fetchMissingSpotifyCandidates`, `inferGenre` and the lenient
+`buildArtists(rows, year, true)`. `build-pool.ts` and the tests import them but
+the file on disk had lost them (6 failing tests, build script could not run).
+They were rewritten to the tests' contract; the SPARQL has not been run against
+the live endpoint from here.
+
+
+## Hebrew singers only (2026-10-21)
+
+The owner wants only Hebrew singers in the pool.
+
+- `hebrewSingerQids` (wikidata.ts) replaces `nonHebrewQids` in the nightly
+  build: Hebrew must be listed among the item's languages (P1412 / P407), and a
+  solo artist needs a singing occupation (singer, singer-songwriter, vocalist,
+  rapper, cantor). Groups only need the language.
+- This reverses the #20 rule "languages not listed or include Hebrew":
+  English-only acts (Temper City, Dennis Lloyd), artists with no language on
+  Wikidata, and instrumentalists / DJs are now out. The Linet hand-exception
+  goes with it. Not yet measured against the live endpoint: if too many real
+  Hebrew singers lack P1412, the build's MIN_POOL guard will fail the run.
+- The client can't apply this to the current pool.json (it carries no language
+  data); it takes effect from the next `npm run build:pool`.
+- The daily answer also requires a known year (`scheduleFor`), so the
+  שנת פריצה tile always shows an arrow unless the guess is exact.
+
+
+## Popularity = Spotify listeners *in Israel*; candidates from Hebrew Wikipedia categories (2026-10-22)
+
+The owner reported well-known artists missing (יוני בלוך, איפה הילד?, טיפקס)
+while acts few Israelis know sat near the top (טמפר סיטי #1, Living
+Tombstone, Vini Vici, לינט #5, בארנבוים, פרלמן). Two causes:
+
+1. **Ranking by worldwide listeners.** Linet's audience is in Turkey (top
+   cities Istanbul, Ankara, Izmir...), Temper City's in London/Sydney/Mexico
+   City. Fix: the build opens each artist's About card and reads "Where people
+   listen" (top 5 cities). Score = listeners in Israeli cities
+   (`israelAudience`, src/lib/spotify.ts). An artist whose top-city audience is
+   < `MIN_ISRAEL_SHARE` (50%) Israeli is dropped. No city card (tiny artists) =
+   assume Israel and use the total. Checked live: עומר אדם 100% IL, יוני
+   בלוך 100% IL (75K), Linet 0%, Temper City 0%.
+2. **Wikidata as the gate.** איפה הילד? has no country, language, Spotify id
+   or members on Wikidata, so the country-scoped query never saw it; טיפקס has
+   no language (fails `hebrewSingerQids`) and no Spotify id; יוני בלוך has no
+   Spotify id. Fix: `src/lib/hewikiCategories.ts` crawls "זמרים השרים בעברית",
+   "זמרות השרות בעברית" and the Israeli band categories (~940 singers, ~530
+   groups, measured live) and adds their QIDs as candidates. A page in the
+   Hebrew-singer categories counts as a Hebrew singer outright; a group from
+   the band categories is kept unless Wikidata lists languages without Hebrew.
+   Category names also give a genre hint when Wikidata has no genre (only
+   music categories: "אישים ממוצא יהודי-מרוקאי" must not read as rock).
+   Artists without a Spotify id are searched on Spotify by Hebrew, then
+   English name ("Yoni Bloch", "Eifo HaYeled").
+
+Also: the missing-Spotify Wikidata query now matches subclasses of musical
+group (`rock band` was missed). `DATA_SCHEMA_VERSION` → v9 so players drop the
+cached old pool. The help text says "מאזינים בישראל".
+
+Not run end-to-end from the sandbox (Wikidata/Spotify are blocked there);
+run `npm run build:pool` locally and check the top-20 printout.
+
+
+## Listener floor: no-namers out of the pool (2026-10-25)
+
+The owner asked to remove artists nobody really knows (סגיב כהן, דוד ד'אור,
+שרון חזיז, the several שרונה...). The pool had 888 artists and its tail went
+down to 3 monthly listeners.
+
+- `MIN_LISTENERS_IL = 40_000` (config.ts): an artist needs at least 40K
+  Spotify monthly listeners *in Israel* to be in the pool at all, guessable or
+  as an answer. Applied in `build-pool.ts` (env override `MIN_LISTENERS_IL`)
+  and again in the client (`fetchPrebuiltPool`), so an older pool.json obeys it.
+- Result on the 2026-10-25 pool: 888 -> 209 artists. Examples dropped:
+  סגיב כהן (36K), דוד ד'אור (23K), שרון חזיז (4K), שרונה נסטוביץ' (236).
+- `ANSWER_POOL_SIZE` 250 -> 150 (daily answers = the top 150 of the 209).
+- `MIN_POOL` guard 300 -> 150, otherwise every nightly build would fail.
+- `DATA_SCHEMA_VERSION` -> v10 so players drop the cached 888-artist pool.
+- Side effect: days whose answer was a removed artist get a new answer
+  (rendezvous hashing; other days are unchanged).
+
+
+## Hand-checked genres (2026-10-28)
+
+The owner reported wrong genres: עמיר בניון showed ג׳אז/סול and רוני דלומי
+showed רוק. Wikidata's P136 is often missing or odd for Israeli artists, and the
+occupation fallback turns every "singer" into pop.
+
+- `src/lib/genreOverrides.ts`: QID -> genre, hand-checked against how Israeli
+  listeners describe the artist. 42 of the 204 pooled artists were corrected
+  (e.g. עמיר בניון -> מזרחית, רוני דלומי -> פופ, נועה קירל -> פופ, ישי ריבו
+  -> פופ דתי, עידן רייכל -> פופ). The replaced genre moves to
+  `secondaryGenres`.
+- Applied in `buildArtists` (nightly build) and in `fetchPrebuiltPool`, so it
+  works on an already-deployed pool.json. The current pool.json was also
+  patched directly.
+- מזרחית and ים-תיכוני are one style to Israeli players, so the overrides use
+  only `mizrahi`; `mediterranean` is no longer anyone's primary genre.
+- `DATA_SCHEMA_VERSION` -> v11 so players drop the cached pool with old genres.
+
+
+## Hand-checked artists, real Israeli audience, Spotify pictures (2026-11-02)
+
+The owner reported איפה הילד and מיכאל סוויסה still missing, סטטיק's picture
+wrong and רוני דלומי still shown as רוק, and asked for more of the artists
+trending in Israel. Checked against the Spotify Israel charts (kworb.net) and
+live Spotify profiles; several of the most-streamed acts in Israel were not in
+the pool at all (אופק אדנק ~800K monthly listeners, בן צור, ששון איפרם
+שאולוב, מור, טונה, בר צברי, מרגי).
+
+Causes and fixes:
+
+1. **The automatic candidate list misses people.** Newcomers have no Wikidata
+   Spotify id or Hebrew-singer category yet, and some bands never get a member
+   count (איפה הילד?, התקווה 6), so the completeness gate dropped them.
+   `src/lib/curatedArtists.ts` holds 22 hand-checked artists with every tile
+   (checked against Hebrew Wikipedia) and their Spotify id. The build always
+   includes them, reads their listeners like everyone else's, and never drops
+   them (no candidate gate, Israel-share filter, floor or gap filling). The
+   client applies the same curated tiles to a deployed pool.json.
+2. **"Listeners in Israel" undercounted.** It was the sum of the Israeli
+   cities among Spotify's top five, i.e. only five cities. For artists with an
+   audience spread over the country that is a fraction of the real number
+   (עפרה חזה: 348K monthly listeners, 36K in the top cities), so the 40K floor
+   cut well-known names. Now: total listeners x Israel's share of the top
+   cities. The share filter (>= 50%) is unchanged.
+3. **Wrong pictures.** The reveal photo came from a Deezer *name* search, which
+   for סטטיק matched a stray 40-fan profile. The build now stores each
+   artist's picture from their Spotify profile (public oEmbed, no key) - the
+   same profile the listener count is read from. Deezer is only a fallback
+   and never replaces it. `DEEZER_IDS` pins סטטיק's real Deezer profile
+   (406841282) for the top-track preview. Enrichment cache -> `enrich:v3:`.
+4. **רוני דלומי = רוק**: the 2026-10-28 genre fix was in the code and in
+   pool.json but never deployed (the live site still ran the 2026-10-25
+   build). It goes out with this deploy.
+
+pool.json was patched directly (226 artists: the 204 + 22 curated, re-ranked
+with the new score, every artist with a Spotify picture), so a deploy is
+enough; the next `npm run build:pool` regenerates it the same way.
+`DATA_SCHEMA_VERSION` -> v12.
+
+Also fixed `tests/storage.test.ts`, which used a fixed "fresh" date
+(2026-10-01) that went stale and failed from November.

@@ -1,17 +1,28 @@
 import type { Artist } from '../types'
-import { DATA_URL, DATA_CACHE_TTL_MS, DATA_SCHEMA_VERSION, DATA_BUST } from '../config'
+import { DATA_CACHE_TTL_MS, DATA_SCHEMA_VERSION, MIN_LISTENERS_IL } from '../config'
+import { israelDateString, rendezvousSchedule } from './daily'
+import { fetchArtistPool } from './wikidata'
+import { applyPageviewRanks } from './popularity'
+import { idbRead, idbWrite } from './idb'
+import { normalizeRanks, ranksAreDense } from './rank'
+import { breakthroughOf } from './age'
+import { hasAllDetails } from './complete'
+import { applyGenreOverride } from './genreOverrides'
+import { curatedArtist, curatedFor } from './curatedArtists'
 
-// Endpoint + cache-busting stamp. The version query forces every fetch past
-// HTTP caches (browser, CDN edge, proxy) so freshly deployed data — above all
-// the daily schedule — always reaches players.
-function busted(endpoint: string): string {
-  return `${endpoint}${endpoint.includes('?') ? '&' : '?'}v=${DATA_BUST}`
-}
-
-// The app loads its artist roster and daily schedule over the network at
-// runtime instead of bundling them. Downloading once per player means the
-// pipeline output can be hosted on any static origin (GitHub Pages, S3, ...)
-// and updated without a rebuild of the app itself.
+// The pool is the top POOL_SIZE Israeli artists on Spotify by monthly
+// listeners. A nightly GitHub Action (scripts/build-pool.ts) reads Wikidata
+// and Spotify, and deploys the result as data/pool.json next to the app; it
+// is generated on every deploy and never committed. When that file is missing
+// (local dev without `npm run build:pool`), the game falls back to the live
+// Wikidata query ranked by Hebrew Wikipedia page views (wikidata.ts,
+// popularity.ts). Either way the result is cached in IndexedDB for the day.
+//
+// The daily answer order is *derived*, not served. buildSchedule() is a seeded
+// shuffle, so as long as the pool is the same, every player independently lands
+// on the same answer for a given day — without a schedule.json to keep in sync.
+// The pool is pinned for DATA_CACHE_TTL_MS, so a refresh during the day reuses
+// the cached pool and the answer cannot shift mid-day.
 
 export interface GameData {
   artists: Artist[]
@@ -21,27 +32,78 @@ export interface GameData {
 
 export type DataSource = 'network' | 'cache' | 'stale-cache'
 
+// Shape of data/pool.json as written by scripts/build-pool.ts.
+export interface PrebuiltPool {
+  generatedAt: string
+  source: 'spotify'
+  artists: Artist[]
+}
+
+export const POOL_URL = `${import.meta.env.BASE_URL}data/pool.json`
+
+// null = no usable prebuilt pool (missing, HTML 404 page, or malformed).
+export async function fetchPrebuiltPool(
+  fetchImpl: typeof fetch = fetch,
+  signal?: AbortSignal,
+): Promise<Artist[] | null> {
+  try {
+    const res = await fetchImpl(POOL_URL, { signal, cache: 'no-cache' })
+    if (!res.ok) return null
+    const json = (await res.json()) as Partial<PrebuiltPool>
+    if (json?.source !== 'spotify' || !Array.isArray(json.artists) || json.artists.length === 0) return null
+    // Only artists with every tile known; then never trust the file's ranks
+    // blindly: one artist per rank, 1..POOL_SIZE.
+    // Also drop the long tail below the listener floor, so an older pool.json
+    // obeys it too (an artist with no reading is kept).
+    // Hand-checked genres apply to an already-deployed pool.json too.
+    // Hand-checked artists (curatedArtists.ts) keep their curated tiles and
+    // are never cut by the floor.
+    const complete = json.artists
+      .map(applyCurated)
+      .filter(
+        (a) =>
+          hasAllDetails(a) &&
+          (curatedFor(a.id) != null || (a.metrics?.spotifyListenersIL ?? MIN_LISTENERS_IL) >= MIN_LISTENERS_IL),
+      )
+      .map(applyGenreOverride)
+    return complete.length > 0 ? normalizeRanks(complete) : null
+  } catch (err) {
+    if (signal?.aborted) throw err
+    return null
+  }
+}
+
+function applyCurated(a: Artist): Artist {
+  const c = curatedFor(a.id)
+  if (!c) return a
+  return { ...curatedArtist(c, a), popularityRank: a.popularityRank, answerEligible: a.answerEligible, imageUrl: a.imageUrl }
+}
+
 export interface LoadResult {
   data: GameData
   source: DataSource
 }
 
-const PREFIX = 'amandle:v1:data'
-const cacheKey = `${PREFIX}:${DATA_SCHEMA_VERSION}`
+const cacheKey = `dataset:${DATA_SCHEMA_VERSION}`
 
-interface CacheRecord {
-  ts: number
-  data: GameData
+// Session copy, so switching tabs/views never re-reads storage.
+let memoryData: GameData | null = null
+let inflight: Promise<LoadResult> | null = null
+
+// The shuffle seed. Fixed forever: changing it would hand every returning
+// player a different puzzle for a day they have already played.
+const SCHEDULE_SEED = 'amandle-schedule-2026-10'
+
+// An answer must have a known breakthrough year: otherwise the שנת פריצה tile
+// shows "—" with no arrow on every guess that day.
+export function scheduleFor(artists: Artist[]): string[] {
+  const ids = artists.filter((a) => a.answerEligible && breakthroughOf(a) > 0).map((a) => a.id)
+  return ids.length > 0 ? rendezvousSchedule(ids, SCHEDULE_SEED) : []
 }
 
-// Session in-memory copy, so a page doesn't do work when switching tabs/views.
-let memoryData: GameData | null = null
-
-// ---- pure logic (unit-tested) ----------------------------------------------
-
-// Minimal structural validation of a downloaded dataset. Full schema checks
-// live at build time in scripts/07-validate.ts; this only guards against a
-// wrong/partial deploy or a shape change slipping through.
+// Minimal structural validation of a fetched dataset. This guards against a
+// partial upstream response or a schema change slipping through and producing a
+// puzzle with a missing artist.
 export function validateGameData(json: unknown): GameData | null {
   if (!json || typeof json !== 'object') return null
   const d = json as { artists?: unknown; schedule?: unknown }
@@ -56,11 +118,15 @@ export function validateGameData(json: unknown): GameData | null {
     if (typeof x.nameHe !== 'string' || !x.nameHe) return null
     if (typeof x.debutYear !== 'number' || !Number.isFinite(x.debutYear)) return null
     if (typeof x.type !== 'string') return null
+    if (typeof x.primaryGenre !== 'string') return null
     if (typeof x.popularityRank !== 'number' || !Number.isInteger(x.popularityRank) || x.popularityRank < 1) {
       return null
     }
+    if (ids.has(x.id)) return null
     ids.add(x.id)
   }
+  // Popularity must be a strict 1..N ranking: one artist per rank.
+  if (!ranksAreDense(d.artists as Artist[])) return null
 
   for (const id of d.schedule) {
     if (typeof id !== 'string' || !ids.has(id)) return null
@@ -69,87 +135,100 @@ export function validateGameData(json: unknown): GameData | null {
   return { artists: d.artists as Artist[], schedule: d.schedule }
 }
 
+// Fresh = fetched on the same Israeli calendar day (and within the TTL), so
+// every player re-derives the pool once per puzzle day.
 export function isDataFresh(ts: number, now: number = Date.now()): boolean {
-  return Number.isFinite(ts) && now - ts < DATA_CACHE_TTL_MS
+  if (!Number.isFinite(ts) || now - ts >= DATA_CACHE_TTL_MS || ts > now) return false
+  return israelDateString(new Date(ts)) === israelDateString(new Date(now))
 }
-
-// ---- persistence (defensive around localStorage) ---------------------------
-
-function readCacheRecord(): CacheRecord | null {
-  try {
-    const raw = window.localStorage.getItem(cacheKey)
-    if (!raw) return null
-    const rec = JSON.parse(raw) as CacheRecord
-    return rec && Array.isArray(rec.data?.artists) && Array.isArray(rec.data?.schedule) ? rec : null
-  } catch {
-    return null
-  }
-}
-
-function writeCacheRecord(rec: CacheRecord): void {
-  try {
-    window.localStorage.setItem(cacheKey, JSON.stringify(rec))
-  } catch {
-    // storage blocked / full — memory cache still works for this session
-  }
-}
-
-// ---- loader ----------------------------------------------------------------
 
 export interface LoadGameDataOptions {
   fetchImpl?: typeof fetch
   now?: number // clock injection for tests
+  signal?: AbortSignal
+  // See FetchPoolOptions.headers: Node callers need a User-Agent, browsers do not.
+  headers?: Record<string, string>
+  onProgress?: (stage: 'artists' | 'popularity', done?: number, total?: number) => void
 }
 
 export async function loadGameData(opts: LoadGameDataOptions = {}): Promise<LoadResult> {
-  const { fetchImpl = fetch, now = Date.now() } = opts
+  // Concurrent callers (React strict mode double-invoke, several views mounting)
+  // must share one fetch rather than each hammering WDQS.
+  if (inflight) return inflight
+  inflight = doLoad(opts).finally(() => {
+    inflight = null
+  })
+  return inflight
+}
 
-  // 1. Fresh local copy (this session or a recent download) — no network.
+async function doLoad(opts: LoadGameDataOptions): Promise<LoadResult> {
+  const { now = Date.now(), fetchImpl, signal, headers, onProgress } = opts
+
+  // 1. Session copy — no storage read, no network.
   if (memoryData) return { data: memoryData, source: 'cache' }
 
-  const cached = readCacheRecord()
+  // 2. IndexedDB copy from a previous visit.
+  const cached = await idbRead<GameData>(cacheKey)
   if (cached && isDataFresh(cached.ts, now)) {
-    memoryData = cached.data
-    return { data: cached.data, source: 'cache' }
-  }
-
-  // 2. Try the network (small retry; failing fast matters on mobile).
-  let lastError: unknown
-  for (let attempt = 0; attempt < 2; attempt++) {
-    try {
-      const [artistsRes, scheduleRes] = await Promise.all([
-        fetchImpl(busted(`${DATA_URL}/artists.json`), { cache: 'no-store' }),
-        fetchImpl(busted(`${DATA_URL}/schedule.json`), { cache: 'no-store' }),
-      ])
-      if (!artistsRes.ok || !scheduleRes.ok) {
-        throw new Error(`HTTP ${artistsRes.status}/${scheduleRes.status} for ${DATA_URL}`)
-      }
-      const [artistsJson, scheduleJson] = await Promise.all([
-        artistsRes.json(),
-        scheduleRes.json(),
-      ])
-      const data = validateGameData({ artists: artistsJson, schedule: scheduleJson })
-      if (!data) throw new Error('dataset failed validation')
-      writeCacheRecord({ ts: now, data })
+    const data = validateGameData(cached.data)
+    if (data) {
       memoryData = data
-      return { data, source: 'network' }
-    } catch (err) {
-      lastError = err
-      await new Promise((r) => setTimeout(r, 300 * 2 ** attempt))
+      return { data, source: 'cache' }
     }
   }
 
-  // 3. Network failed — serve yesterday's copy if we have one. The daily
-  //    schedule is stable, so a stale roster is perfectly playable.
-  if (cached) {
-    memoryData = cached.data
-    return { data: cached.data, source: 'stale-cache' }
+  // 3. The nightly Spotify pool deployed with the app.
+  onProgress?.('artists')
+  const prebuilt = await fetchPrebuiltPool(fetchImpl, signal)
+  if (prebuilt) {
+    const data = validateGameData({ artists: prebuilt, schedule: scheduleFor(prebuilt) })
+    if (data) {
+      await idbWrite(cacheKey, now, data)
+      memoryData = data
+      return { data, source: 'network' }
+    }
   }
 
-  throw lastError
+  // 4. Fallback: query Wikidata live and derive the schedule.
+  try {
+    const artists = await fetchArtistPool({ fetchImpl, signal, headers })
+    // Popularity from Hebrew Wikipedia page views. If that API is down the
+    // provisional sitelink ranking stays, which is still a playable game.
+    onProgress?.('popularity', 0)
+    try {
+      await applyPageviewRanks(artists, {
+        fetchImpl,
+        signal,
+        onProgress: (d, t) => onProgress?.('popularity', d, t),
+      })
+    } catch (err) {
+      if (signal?.aborted) throw err
+    }
+    // Keep the POOL_SIZE most viewed (or, if page views failed, the provisional
+    // sitelink order), one artist per rank 1..N. Daily answers = top
+    // ANSWER_POOL_SIZE: the artists Israelis read about most.
+    const pool = normalizeRanks(artists.filter(hasAllDetails))
+    const data = validateGameData({ artists: pool, schedule: scheduleFor(pool) })
+    if (!data) throw new Error('Wikidata dataset failed validation')
+    await idbWrite(cacheKey, now, data)
+    memoryData = data
+    return { data, source: 'network' }
+  } catch (err) {
+    if (signal?.aborted) throw err
+    // 5. Network failed — a stale pool is still a perfectly playable game.
+    if (cached) {
+      const data = validateGameData(cached.data)
+      if (data) {
+        memoryData = data
+        return { data, source: 'stale-cache' }
+      }
+    }
+    throw err
+  }
 }
 
 // Test hook — clears the session copy so tests exercise the full load path.
 export function _resetDataLoaderCache(): void {
   memoryData = null
+  inflight = null
 }

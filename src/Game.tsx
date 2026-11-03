@@ -3,7 +3,8 @@ import type { DataSource, GameData } from './lib/dataLoader'
 import type { Settings } from './lib/storage'
 import { loadSettings, saveSettings } from './lib/storage'
 import { buildSearchIndex } from './lib/search'
-import { useGame } from './hooks/useGame'
+import { useGame, type GameMode } from './hooks/useGame'
+import { dayNumberFor, israelDateString } from './lib/daily'
 import { reportLink } from './lib/report'
 import { strings } from './strings.he'
 import { SearchBox } from './components/SearchBox'
@@ -12,6 +13,8 @@ import { EndModal } from './components/EndModal'
 import { HelpModal } from './components/HelpModal'
 import { StatsModal } from './components/StatsModal'
 import { SettingsModal } from './components/SettingsModal'
+import { Icon } from './components/Icon'
+import { LegalFooter } from './components/LegalFooter'
 
 const NOTICE_TEXTS: Record<string, string> = {
   alreadyGuessed: strings.alreadyGuessed,
@@ -23,10 +26,9 @@ interface GameProps {
 }
 
 export function Game({ data, source }: GameProps) {
-  const game = useGame(data)
   const [settings, setSettings] = useState<Settings>(() => loadSettings())
   const [modal, setModal] = useState<'help' | 'stats' | 'settings' | null>(null)
-  const [endOpen, setEndOpen] = useState(false)
+  const [mode, setMode] = useState<GameMode>('daily')
 
   const index = useMemo(() => buildSearchIndex(data.artists), [data])
 
@@ -36,6 +38,63 @@ export function Game({ data, source }: GameProps) {
     saveSettings(settings)
   }, [settings])
 
+  // Retro mode exists only once there is a yesterday (from day 2 of the series).
+  const hasYesterday = dayNumberFor(israelDateString(new Date())) >= 1
+  const toggleMode = hasYesterday
+    ? () => setMode((m) => (m === 'daily' ? 'yesterday' : 'daily'))
+    : undefined
+
+  return (
+    <main className={mode === 'yesterday' ? 'game retro' : 'game'}>
+      <header className="app-header">
+        <nav className="app-actions" aria-label={strings.title}>
+          {hasYesterday && (
+            <button
+              type="button"
+              className={mode === 'yesterday' ? 'icon-btn active' : 'icon-btn'}
+              onClick={toggleMode}
+              aria-pressed={mode === 'yesterday'}
+              aria-label={strings.btnYesterday}
+              title={mode === 'yesterday' ? strings.backToToday : strings.btnYesterday}
+            >
+              <Icon name="history" />
+            </button>
+          )}
+          <button type="button" className="icon-btn" onClick={() => setModal('help')} aria-label={strings.btnHelp} title={strings.btnHelp}>
+            <Icon name="help" />
+          </button>
+          <button type="button" className="icon-btn" onClick={() => setModal('stats')} aria-label={strings.btnStats} title={strings.btnStats}>
+            <Icon name="stats" />
+          </button>
+          <button type="button" className="icon-btn" onClick={() => setModal('settings')} aria-label={strings.btnSettings} title={strings.btnSettings}>
+            <Icon name="settings" />
+          </button>
+        </nav>
+      </header>
+
+      {/* Keyed by mode so switching days remounts a clean board (no stale
+          guesses or end dialog from the other day). */}
+      <DayBoard key={mode} data={data} source={source} mode={mode} index={index} onSwitchMode={toggleMode} />
+
+      {modal === 'help' && <HelpModal onClose={() => setModal(null)} />}
+      {modal === 'stats' && <StatsModal onClose={() => setModal(null)} />}
+      {modal === 'settings' && (
+        <SettingsModal settings={settings} onChange={setSettings} onClose={() => setModal(null)} />
+      )}
+    </main>
+  )
+}
+
+interface DayBoardProps extends GameProps {
+  mode: GameMode
+  index: ReturnType<typeof buildSearchIndex>
+  onSwitchMode?: () => void
+}
+
+function DayBoard({ data, source, mode, index, onSwitchMode }: DayBoardProps) {
+  const game = useGame(data, mode)
+  const retro = mode === 'yesterday'
+  const [endOpen, setEndOpen] = useState(false)
   const finished = game.status !== 'playing'
 
   // The win/lose dialog opens when the round ends and stays open until the
@@ -45,69 +104,64 @@ export function Game({ data, source }: GameProps) {
   }, [finished])
 
   return (
-    <main className="game">
-      <header className="app-header">
-        <div>
-          <h1 className="app-title">{strings.title}</h1>
-          <p className="app-subtitle">{strings.subtitle}</p>
-        </div>
-        <nav className="app-actions" aria-label={strings.title}>
-          <button type="button" className="icon-btn" onClick={() => setModal('help')}>
-            {strings.btnHelp}
-          </button>
-          <button type="button" className="icon-btn" onClick={() => setModal('stats')}>
-            {strings.btnStats}
-          </button>
-          <button type="button" className="icon-btn" onClick={() => setModal('settings')}>
-            {strings.btnSettings}
-          </button>
-        </nav>
-      </header>
+      <div className="game-body">
+      <div className="logo-block">
+        <h1 className="app-title">
+          <span className="logo-disc" aria-hidden="true" />
+          {strings.title}
+        </h1>
+        <p className="app-subtitle">
+          {strings.gameInfo
+            .replace('{max}', String(game.maxGuesses))
+            .replace('{n}', data.artists.length.toLocaleString('he-IL'))}
+        </p>
+      </div>
 
       {source === 'stale-cache' && <p className="notice info">{strings.staleDataNote}</p>}
 
+      {retro && (
+        <div className="notice retro-banner" role="status">
+          <span>{strings.retroBanner}</span>
+          {onSwitchMode && (
+            <button type="button" className="link-btn" onClick={onSwitchMode}>
+              {strings.backToToday}
+            </button>
+          )}
+        </div>
+      )}
+
       <p className="counter" aria-live="polite" aria-atomic="true">
-        {strings.guessCounter.replace('{n}', String(game.guesses.length)).replace('{max}', String(game.maxGuesses))}
-        <span className="day-number">· {strings.numberOfDay.replace('{n}', String(game.dayNumber + 1))}</span>
+        <span className="day-number">{strings.numberOfDay.replace('{n}', String(game.dayNumber + 1))}</span>
+        <span className="guess-count">
+          {strings.guessCounter
+            .replace('{n}', String(Math.min(game.guesses.length + (finished ? 0 : 1), game.maxGuesses)))
+            .replace('{max}', String(game.maxGuesses))}
+        </span>
       </p>
 
       <SearchBox
         index={index}
         guessedIds={game.guessedIds}
-        disabled={finished}
+        disabled={finished || game.pending}
         placeholder={strings.placeholder}
         notFoundText={strings.notFound}
         onPick={game.submitGuess}
       />
 
+      {game.pending && (
+        <p className="notice info" role="status">
+          {strings.checkingGuess}
+        </p>
+      )}
+
       {game.notice && <p className="notice error" role="alert">{NOTICE_TEXTS[game.notice] ?? game.notice}</p>}
 
-      <div className="legend" role="note" aria-label={strings.legendArrow}>
-        <span className="legend-item">
-          <span className="legend-chip chip-green" /> {strings.legendCorrect}
-        </span>
-        <span className="legend-item">
-          <span className="legend-chip chip-yellow" /> {strings.legendClose}
-        </span>
-        <span className="legend-item">
-          <span className="legend-chip chip-gray" /> {strings.legendWrong}
-        </span>
-        <span className="legend-item">
-          <span className="legend-arrow">▲▼</span> {strings.legendArrow}
-        </span>
-      </div>
-
-      <GuessBoard guesses={game.guesses} artistsById={game.artistsById} animate />
-
-      {(modal === 'help' || modal === 'stats' || modal === 'settings') && (
-        <>
-          {modal === 'help' && <HelpModal onClose={() => setModal(null)} />}
-          {modal === 'stats' && <StatsModal onClose={() => setModal(null)} />}
-          {modal === 'settings' && (
-            <SettingsModal settings={settings} onChange={setSettings} onClose={() => setModal(null)} />
-          )}
-        </>
-      )}
+      <GuessBoard
+        guesses={game.guesses}
+        artistsById={game.artistsById}
+        animate
+        revealAnswer={game.status === 'lost' ? game.target : null}
+      />
 
       {endOpen && game.target && (
         <EndModal
@@ -117,6 +171,8 @@ export function Game({ data, source }: GameProps) {
           guessesUsed={game.guesses.length}
           maxGuesses={game.maxGuesses}
           rows={game.shareRows}
+          retro={retro}
+          onSwitchMode={onSwitchMode}
           onClose={() => setEndOpen(false)}
         />
       )}
@@ -124,7 +180,8 @@ export function Game({ data, source }: GameProps) {
       <footer className="footer">
         <p>{strings.footerCredits}</p>
         <a href={reportLink(game.dayNumber)}>{strings.reportMistake}</a>
+        <LegalFooter />
       </footer>
-    </main>
+      </div>
   )
 }

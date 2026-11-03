@@ -1,5 +1,7 @@
+import { useState } from 'react'
 import { strings } from '../strings.he'
 import type { Settings } from '../lib/storage'
+import { deleteAllData } from '../lib/deleteData'
 import { Modal } from './Modal'
 
 interface SettingsModalProps {
@@ -9,6 +11,8 @@ interface SettingsModalProps {
 }
 
 export function SettingsModal({ settings, onChange, onClose }: SettingsModalProps) {
+  const [confirming, setConfirming] = useState(false)
+
   return (
     <Modal title={strings.settingsTitle} onClose={onClose}>
       <label className="setting-row">
@@ -35,6 +39,23 @@ export function SettingsModal({ settings, onChange, onClose }: SettingsModalProp
           {strings.themeLight}
         </button>
       </fieldset>
+      <div className="delete-data">
+        <p className="delete-data-hint">{strings.deleteDataHint}</p>
+        {confirming ? (
+          <div className="end-actions" role="group" aria-label={strings.deleteData}>
+            <button type="button" className="danger-btn" onClick={() => void deleteAllData()}>
+              {strings.deleteDataConfirm}
+            </button>
+            <button type="button" className="secondary-btn" onClick={() => setConfirming(false)}>
+              {strings.deleteDataCancel}
+            </button>
+          </div>
+        ) : (
+          <button type="button" className="secondary-btn" onClick={() => setConfirming(true)}>
+            {strings.deleteData}
+          </button>
+        )}
+      </div>
     </Modal>
   )
 }

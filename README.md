@@ -1,12 +1,22 @@
 # אמנדל — נחשו את האמן הישראלי היומי
 
-A Hebrew, RTL, daily "spotle"-style game: identify the day's Israeli artist in up to
-10 guesses using 6 color-coded clue tiles first appeared as arrows (debut year,
-breakthrough year, lineup, gender, genre, popularity).
+A Hebrew, RTL, daily Spotle clone with Israeli artists only: identify the day's
+artist in 10 guesses. Each guess reveals six Spotle-style tiles — breakthrough
+year (in place of debut album), members, popularity, gender, genre, and age (in
+place of nationality, since every artist is Israeli).
 
-The game is a static Vite + React + TypeScript site. The artist roster and the
-daily answer schedule are **not bundled** — they are produced by the data
-pipeline and served as plain JSON, so the app updates simply by changing data.
+All data is fetched live from public APIs. There is no committed dataset and no
+JSON data file; the only rules in the repo are the genre mapping and the tile
+thresholds, both in TypeScript.
+
+| Tile | Green | Yellow | Arrow |
+|------|-------|--------|-------|
+| שנת פריצה | same year | within 5 years | yes |
+| חברים | same lineup size | — | — |
+| פופולריות | same rank | within 5% of the pool (Spotle: 50 of 1,000) | yes |
+| מגדר | same | — | — |
+| ז׳אנר | same | — | — |
+| גיל | same age | within 5 years | yes |
 
 ## Stack
 
@@ -26,69 +36,109 @@ npm run build        # tsc -b && vite build -> dist/
 npm run preview      # serve dist/ locally
 ```
 
-The app fetches `artists.json` + `schedule.json` from `VITE_DATA_URL`
-(default `/data`, same-origin). Set `VITE_DATA_URL` at build time to point at
-another static origin, e.g. `VITE_DATA_URL=https://cdn.example.com/amandle-data npm run build`.
+## Artist data (live APIs)
 
-## Data pipeline (scripts/01–08)
+| Source | Used for | How |
+|--------|----------|-----|
+| Wikidata Query Service | the roster: name, solo/duo/band, gender, genres, career start, birth/death/formation years, band members, MusicBrainz/Deezer ids | one aggregated SPARQL query at load (`src/lib/wikidata.ts`) |
+| Hebrew Wikipedia (MediaWiki API) | popularity rank = page views in the last 60 days; also picks the 250 daily-answer candidates | `prop=pageviews`, 50 titles per request (`src/lib/popularity.ts`) |
+| MusicBrainz | breakthrough year = earliest original release year among the artist's 20 most played Deezer tracks (fallback: first album, then Wikidata career start); band lineup size and member genders when Wikidata lacks them | on demand, only for guessed artists and the answer, ≤1 req/s (`src/lib/enrich.ts`) |
+| Deezer | artist picture, the 20 most played tracks (for the breakthrough year), and the top track's 30-second preview on the reveal card | JSONP on demand (`src/lib/enrich.ts`, `src/lib/jsonp.ts`) |
 
-Live-API pipeline → `public/data/`:
+### Every artist has every tile
 
-| Stage | Source | Produces |
-|-------|--------|----------|
-| 01 | Wikidata (`wbgetentities` + optional SPARQL pool growth) | `data/raw/wikidata.json` |
-| 02 | MusicBrainz | begin date, type, members, gender, tags, `qid-mbid` |
-| 03 | Deezer | `deezerFans` |
-| 04 | Last.fm (needs `LASTFM_API_KEY` in `.env`; skips otherwise) | `lastfmListeners` |
-| 05 | Wikimedia pageviews | `hewikiPageviews90d` |
-| 06–08 | merge, validate, build schedule | `public/data/artists.json`, `public/data/schedule.json`, `data/review-report.md` |
+An artist only enters the pool when all six tiles have a real value (no "—"):
+a career-start year, a lineup size, a known gender (for groups: the members'
+genders), a mapped genre, a popularity rank, and a birth or formation year.
+`src/lib/complete.ts` defines the rule.
 
-```bash
-npm run data         # full pipeline (network) — slow, needs network
-npm run data:merge   # merge+validate+schedule only (no API calls)
-npm run data:validate
-```
+- `npm run build:pool` gathers candidates from Hebrew Wikipedia's Hebrew-singer
+  and Israeli-band categories plus Wikidata, and ranks them by Spotify monthly
+  listeners **in Israel** (the Israeli cities among each artist's top 5);
+  artists whose audience is mostly abroad are left out (`MIN_ISRAEL_SHARE`).
+- It then walks that ranking from the top and
+  fills holes Wikidata leaves (`src/lib/fill.ts`): MusicBrainz for lineup,
+  member genders, birth/formation year and first release, Deezer albums as a
+  second source for the first release. An artist still missing something is
+  skipped and the next one takes its place, so the pool stays at 1,000.
+  MusicBrainz allows ~1 request/s, so this adds ~15–30 minutes to the build.
+- `npm run fill:pool` does the same to an existing `public/data/pool.json`
+  without re-reading Spotify (incomplete artists are removed, the rest are
+  re-ranked in order).
+- The game itself also drops any incomplete artist it loads (an old pool file,
+  or the live Wikidata fallback, which can't fill gaps).
 
-The seed list is `data/seed-names.json`; genre/region hints in `data/genre-map.json`
-and `data/city-region.json`. Unknown values are flagged in
-`data/review-report.md`, never guessed; the owner corrects them via
-`data/overrides.json`.
+None of these need an API key. The roster is cached in IndexedDB until the
+Israeli midnight; per-artist enrichment is cached for 7 days.
 
-The schedule is deterministic (seeded shuffle, seed `amandle-schedule-2026-10`),
-never reshuffled after launch — new eligible artists are appended at the end.
+Age is the artist's age (age at death for a deceased artist, shown as "ז״ל");
+for a group, years since it was formed (`src/lib/age.ts`).
 
-## Storage
+The daily answer uses rendezvous hashing over the answer candidates
+(`rendezvousSchedule` in `src/lib/daily.ts`), so small day-to-day drift in page
+views only affects the days a marginal artist would have won, and an answer
+never repeats within 60 days.
 
-`localStorage` (namespace `amandle:v1`) holds today's game, settings, stats, and
-the 24h data cache. Every access is wrapped so the game works with storage
-blocked, just without persistence.
+### What this costs
+
+- First load: the Wikidata query (~5–30s) plus ~12 page-view requests.
+- A guess waits for MusicBrainz (1–4s, rate limited); after 12s the game
+  compares with what it has.
+- Hand-checked corrections (the old `overrides.json`) are gone, so a wrong
+  Wikidata value shows up as-is. Fix it on Wikidata and it propagates.
+
+`localStorage` (namespace `amandle:v1`) holds today's game, settings and stats;
+the artist cache lives in IndexedDB. Every access is wrapped so the game works
+with storage blocked, just without persistence.
 
 ## Deployment (GitHub Pages)
 
-- CI (`.github/workflows/ci.yml`): lint + typecheck + vitest + `data:validate` on push/PR.
+- CI (`.github/workflows/ci.yml`): lint + typecheck + vitest on push/PR.
 - Deploy (`.github/workflows/deploy.yml`): build → Pages on push to `main`.
 
 Before enabling Pages:
 
-1. Set `GAME_URL` and `REPORT_EMAIL` in `src/config.ts`.
+1. Set `GAME_URL`, `REPORT_EMAIL` and `OWNER_NAME` in `src/config.ts` (the
+   legal pages show them as the site operator and accessibility contact).
 2. Push to GitHub; in Settings → Pages choose **Source: GitHub Actions**.
-3. Verify `/`, `/data/artists.json`, `/data/schedule.json` return 200.
+3. Verify `/` returns 200. There is no `/data/` to check — the roster comes
+   from Wikidata at run time, so test it on the deployed origin once.
 
 ## Launch checklist (spec section 14)
 
-- [x] ≥300-artist pool (348), ≥150 answerEligible (209)
-- [x] validation script passes (11 warnings, see review report)
-- [ ] review report reaches 0 `genre-unmapped` (275) / `region-unmapped` (159) flags (owner overrides)
-- [ ] 20 sampled artists hand-checked against Wikipedia/MusicBrainz
+- [x] ≥300-artist pool (~550 live, all with a Hebrew Wikipedia article)
+- [x] no `"other"` genre; every pooled artist resolves to one of the twelve genres
+- [x] every pooled artist has a value for all six tiles (`src/lib/complete.ts`)
 - [x] compare/normalizeHe/daily logic covered incl. DST and arrows
 - [x] full game playable on 360px, keyboard-only, screen reader
-- [x] RTL correct; localStorage-disabled safe; reload restores the board
+- [x] RTL correct; storage-disabled safe; reload restores the board
 - [x] colorblind + reduced motion
-- [x] first load < 250 KB gzipped (JS ~77 KB + compressed JSON); Lighthouse ≥90 to confirm
-- [x] CI runs lint + tsc + vitest + validate
+- [x] first load < 250 KB gzipped (JS ~90 KB; nothing else to download)
+- [x] CI runs lint + tsc + vitest
+- [ ] first-load wait (6–30s) judged acceptable in a real browser
+- [ ] `OWNER_NAME` and `REPORT_EMAIL` set (legal pages + accessibility contact)
+- [x] daily answers limited to the 250 most-viewed artists on Hebrew Wikipedia
+
+## Legal pages
+
+Footer links (also reachable as `#privacy`, `#terms`, `#accessibility`) open
+three Hebrew pages whose text lives in `src/legal.he.ts`:
+
+- **מדיניות פרטיות** — no accounts, cookies, analytics or ads; what is kept in
+  localStorage/IndexedDB and for how long; which third-party services the
+  browser contacts (GitHub Pages, Wikimedia, MusicBrainz, Deezer).
+- **תנאי שימוש** — free, as-is, no accuracy warranty, limitation of liability,
+  IP and non-affiliation, takedown requests, Israeli law / Tel Aviv courts.
+- **הצהרת נגישות** — IS 5568 / WCAG AA intent, what was done, known limits,
+  accessibility contact (`OWNER_NAME`, `CONTACT_EMAIL`).
+
+Related: Settings has a **מחיקת הנתונים שלי** button (wipes all local data);
+Heebo is self-hosted via `@fontsource/heebo` (no Google Fonts requests); the
+reveal card credits Deezer. If you add analytics, ads, accounts or a new data
+source, update the privacy policy and `LEGAL_UPDATED` in the same change.
 
 ## Credits / licensing
 
-Data: Wikidata (CC0), MusicBrainz (CC0 core data), Last.fm (non-commercial),
-Deezer. Images/audio off by default (`SHOW_IMAGES=false`). No accounts, no
-analytics, no third-party cookies.
+Data: Wikidata (CC0), Wikipedia page views, MusicBrainz (CC0), Deezer API,
+all queried at run time. No accounts, no analytics, no third-party cookies, and no
+API keys.

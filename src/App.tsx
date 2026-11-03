@@ -3,6 +3,7 @@ import { GAME_NAME } from './config'
 import { strings } from './strings.he'
 import { loadGameData, type LoadResult } from './lib/dataLoader'
 import { Game } from './Game'
+import { LegalFooter } from './components/LegalFooter'
 import './App.css'
 
 type LoadState =
@@ -12,10 +13,15 @@ type LoadState =
 
 function App() {
   const [state, setState] = useState<LoadState>({ status: 'loading' })
+  const [progress, setProgress] = useState<{ done: number; total: number } | null>(null)
 
   useEffect(() => {
     let cancelled = false
-    loadGameData()
+    loadGameData({
+      onProgress: (stage, done, total) => {
+        if (!cancelled && stage === 'popularity' && total) setProgress({ done: done ?? 0, total })
+      },
+    })
       .then((result) => {
         if (!cancelled) setState({ status: 'ready', result })
       })
@@ -31,7 +37,17 @@ function App() {
     return (
       <main className="status-page">
         <h1>{GAME_NAME}</h1>
-        <p>{strings.loadingData}</p>
+        <p>
+          {progress
+            ? strings.loadingPopularity
+                .replace('{done}', String(progress.done))
+                .replace('{total}', String(progress.total))
+            : strings.loadingData}
+        </p>
+        <p className="app-subtitle">{strings.loadingHint}</p>
+        <footer className="footer">
+          <LegalFooter />
+        </footer>
       </main>
     )
   }
@@ -44,6 +60,9 @@ function App() {
         <button type="button" className="primary-btn" onClick={() => window.location.reload()}>
           {strings.retry}
         </button>
+        <footer className="footer">
+          <LegalFooter />
+        </footer>
       </main>
     )
   }

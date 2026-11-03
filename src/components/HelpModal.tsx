@@ -1,9 +1,8 @@
 import type { Match } from '../types'
-import { TILE_FIELDS } from '../types'
 import { strings } from '../strings.he'
 import { Modal } from './Modal'
 
-function LegendExample({ match }: { match: Match }) {
+function Chip({ match }: { match: Match }) {
   const cls = match === 'correct' ? 'green' : match === 'close' ? 'yellow' : 'gray'
   return <span className={`legend-chip chip-${cls}`} />
 }
@@ -13,34 +12,26 @@ export function HelpModal({ onClose }: { onClose: () => void }) {
     <Modal title={strings.helpTitle} onClose={onClose}>
       <p>{strings.helpBody}</p>
       <p className="pick-hint">{strings.pickFromList}</p>
-      <h3>רמזים</h3>
-      <ul className="legend-list">
-        <li>
-          <span className="legend-row">
-            <LegendExample match="correct" />
-            {strings.legendCorrect}
-          </span>
-        </li>
-        <li>
-          <span className="legend-row">
-            <LegendExample match="close" />
-            {strings.legendClose}
-          </span>
-        </li>
-        <li>
-          <span className="legend-row">
-            <LegendExample match="wrong" />
-            {strings.legendWrong}
-          </span>
-        </li>
-        <li>
-          <span className="legend-row">
-            <span className="legend-arrow">▲▼</span>
-            {strings.legendArrow}
-          </span>
-        </li>
+      <ul className="legend-list help-attributes">
+        {strings.helpAttributes.map((a) => (
+          <li key={a.title}>
+            <h3 className="help-attr-title">{a.title}</h3>
+            <p className="help-attr-body">{a.body}</p>
+            <span className="legend-row">
+              <Chip match="wrong" /> {strings.legendWrong}
+              {a.close && (
+                <>
+                  <Chip match="close" /> {a.close}
+                </>
+              )}
+              <Chip match="correct" /> {strings.legendCorrect}
+            </span>
+          </li>
+        ))}
       </ul>
-      <p className="tile-field-note">{TILE_FIELDS.map((f) => strings.columns[f]).join(' · ')}</p>
+      <p className="tile-field-note">
+        <span className="legend-arrow">▲▼</span> {strings.legendArrow}
+      </p>
     </Modal>
   )
 }

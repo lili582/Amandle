@@ -1,204 +1,104 @@
 import { describe, expect, it } from 'vitest'
-import { compareArtist } from '../src/lib/compare'
-import { fixturesById } from './fixtures'
+import { compareArtist, popularityCloseSpan } from '../src/lib/compare'
+import { fixturesById, makeArtist } from './fixtures'
 
-// Arrow convention: 'up' when the TARGET value is higher/later/more than the guess.
-describe('compareArtist', () => {
-  it('returns correct tiles when guessing the target itself', () => {
-    const a = fixturesById.get('pop-alpha')!
-    const tiles = compareArtist(a, a)
+const A = (id: string) => fixturesById.get(id)!
+const tile = (g: string, t: string, i: number, pool = 1000) => compareArtist(A(g), A(t), pool)[i]
+
+describe('compareArtist (Spotle rules)', () => {
+  it('guessing the target makes every tile green, in Spotle order', () => {
+    const tiles = compareArtist(A('pop-alpha'), A('pop-alpha'))
+    expect(tiles.map((t) => t.field)).toEqual(['breakthrough', 'members', 'popularity', 'gender', 'genre', 'age'])
     for (const t of tiles) {
       expect(t.match).toBe('correct')
       expect(t.arrow).toBeUndefined()
     }
-    expect(tiles.map((t) => t.field)).toEqual([
-      'debutYear',
-      'breakthrough',
-      'lineup',
-      'gender',
-      'genre',
-      'popularity',
-    ])
   })
 
-  describe('debutYear', () => {
-    const target = fixturesById.get('pop-alpha')! // debut 2010
-    it('exact year is correct', () => {
-      const g = { ...target, id: 'x', nameHe: 'x' } as typeof target
-      expect(compareArtist(g, target)[0].match).toBe('correct')
-    })
-    it('within 3 years is close', () => {
-      const g = { ...target, id: 'x', nameHe: 'x', debutYear: 2013 } as typeof target
-      const t = compareArtist(g, target)[0]
-      expect(t.match).toBe('close')
-      expect(t.arrow).toBe('up') // target (born 2010) is older than guess (born 2013)
-    })
-    it('far apart is wrong with a direction arrow', () => {
-      const g = { ...target, id: 'x', nameHe: 'x', debutYear: 1990 } as typeof target
-      const t = compareArtist(g, target)[0]
-      expect(t.match).toBe('wrong')
-      expect(t.arrow).toBe('down') // target (born 2010) is younger than guess (born 1990)
-    })
+  it('stores the guessed value on each tile', () => {
+    const tiles = compareArtist(A('rock-band'), A('pop-alpha'))
+    expect(tiles.map((t) => t.value)).toEqual(['1985', '4', '#500', 'מעורב', 'רוק', String(new Date().getFullYear() - 1984)])
   })
 
   describe('breakthrough', () => {
-    const target = fixturesById.get('pop-alpha')! // breakthrough 2012
-    it('mirrors the debut-year rule and direction', () => {
-      const later = { ...target, id: 'x', nameHe: 'x', breakthroughYear: 2015 } as typeof target
-      const t = compareArtist(later, target)[1]
-      expect(t.match).toBe('close')
-      expect(t.arrow).toBe('down')
+    it('uses the dated hit, else falls back to the career start', () => {
+      expect(compareArtist(A('pop-alpha'), A('pop-alpha'))[0].value).toBe('2010')
+      expect(compareArtist(A('pop-beta'), A('pop-alpha'))[0].value).toBe('2013')
     })
-    it('exact is correct', () => {
-      expect(compareArtist(target, target)[1].match).toBe('correct')
+    it('within 7 years is yellow with an arrow toward the answer', () => {
+      expect(tile('pop-beta', 'pop-alpha', 0)).toMatchObject({ match: 'close', arrow: 'down' })
+      expect(tile('pop-alpha', 'pop-beta', 0)).toMatchObject({ match: 'close', arrow: 'up' })
     })
-  })
-
-  describe('lineup', () => {
-    const band4 = fixturesById.get('rock-band')! // band, 4, mixed
-    const band3 = fixturesById.get('rock-band2')! // band, 3, male
-    const duo = fixturesById.get('rock-duo')! // duo, 2, male
-    const solo = fixturesById.get('pop-alpha')! // solo, 1
-
-    it('identical bands are correct', () => {
-      expect(compareArtist(band4, band4)[2].match).toBe('correct')
+    it('7 years apart is still yellow, 8 is gray', () => {
+      const t = makeArtist({ id: 't', nameHe: 'ת', breakthroughYear: 2010 })
+      const g7 = makeArtist({ id: 'g7', nameHe: 'ז', breakthroughYear: 2017 })
+      const g8 = makeArtist({ id: 'g8', nameHe: 'ח', breakthroughYear: 2018 })
+      expect(compareArtist(g7, t)[0].match).toBe('close')
+      expect(compareArtist(g8, t)[0].match).toBe('wrong')
     })
-    it('two bands with different counts are close with an arrow', () => {
-      const t = compareArtist(band4, band3)[2]
-      expect(t.match).toBe('close')
-      expect(t.arrow).toBe('down') // target has 3 < guess 4
+    it('more than 7 years is gray with an arrow', () => {
+      expect(tile('mizrahi-1', 'pop-alpha', 0)).toMatchObject({ match: 'wrong', arrow: 'up' })
     })
-    it('band vs duo is close', () => {
-      const t = compareArtist(band4, duo)[2]
-      expect(t.match).toBe('close')
-      expect(t.arrow).toBeDefined()
-    })
-    it('solo vs group is wrong', () => {
-      expect(compareArtist(solo, band4)[2].match).toBe('wrong')
-      expect(compareArtist(band4, solo)[2].match).toBe('wrong')
-    })
-
-    // members === 0 is the "unknown" sentinel, and every band in the shipped
-    // dataset is unknown. Two unknowns must not read as a match, or the tile
-    // awards "correct" for a member count nobody measured.
-    it('two bands with unknown counts are close, never correct', () => {
-      const unknownA = { ...band4, members: 0 }
-      const unknownB = { ...band3, members: 0 }
-      expect(compareArtist(unknownA, unknownB)[2].match).toBe('close')
-    })
-    it('unknown vs known band count is close with no arrow', () => {
-      const t = compareArtist({ ...band4, members: 0 }, band3)[2]
-      expect(t.match).toBe('close')
+    it('unknown year is gray with no arrow', () => {
+      const t = tile('unknown-1', 'pop-alpha', 0)
+      expect(t.match).toBe('wrong')
       expect(t.arrow).toBeUndefined()
     })
-    it('unknown count never beats a real solo', () => {
-      expect(compareArtist({ ...band4, members: 0 }, solo)[2].match).toBe('wrong')
-    })
   })
 
-  // 0 is the "unknown" sentinel for both year tiles. 75 pool artists have no
-  // breakthrough year, and 11 have neither birth nor debut year, so these were
-  // awarding "correct" for two matching unknowns across thousands of pairs.
-  describe('unknown years are never a match', () => {
-    const known = fixturesById.get('pop-alpha')!
-
-    it('two unknown breakthrough years are not correct', () => {
-      const g = { ...known, breakthroughYear: 0 }
-      const t = { ...known, id: 'y', nameHe: 'y', breakthroughYear: 0 }
-      expect(compareArtist(g, t)[1].match).not.toBe('correct')
+  describe('members', () => {
+    it('same lineup size is green, anything else gray (no yellow)', () => {
+      expect(tile('pop-beta', 'pop-alpha', 1).match).toBe('correct')
+      expect(tile('rock-duo', 'rock-band', 1).match).toBe('wrong')
+      expect(tile('pop-alpha', 'rock-band', 1).match).toBe('wrong')
     })
-    it('unknown breakthrough year has no direction arrow', () => {
-      const g = { ...known, breakthroughYear: 0 }
-      expect(compareArtist(g, known)[1].arrow).toBeUndefined()
-    })
-    it('unknown debut age is not correct', () => {
-      const g = { ...known, birthYear: undefined, debutYear: 0 }
-      const t = { ...known, id: 'y', nameHe: 'y', birthYear: undefined, debutYear: 0 }
-      expect(compareArtist(g, t)[0].match).not.toBe('correct')
-    })
-  })
-
-  describe('gender', () => {
-    const mixed = fixturesById.get('rock-band')! // mixed
-    const male = fixturesById.get('pop-alpha')! // male
-
-    it('same gender is correct', () => {
-      expect(compareArtist(male, popBetaMale())[3].match).toBe('correct')
-    })
-    it('exactly one mixed is close', () => {
-      expect(compareArtist(mixed, male)[3].match).toBe('close')
-      expect(compareArtist(male, mixed)[3].match).toBe('close')
-    })
-    it('male vs female is wrong', () => {
-      expect(compareArtist(male, fixturesById.get('pop-beta')!)[3].match).toBe('wrong')
-    })
-  })
-
-  describe('genre', () => {
-    const pop = fixturesById.get('pop-alpha')! // pop
-    const mizrahi = fixturesById.get('mizrahi-1')! // mizrahi, secondary [pop]
-    const rock = fixturesById.get('rock-band')! // rock
-
-    it('same primary genre is correct', () => {
-      const g = { ...rock, id: 'x', nameHe: 'x' } as typeof rock
-      expect(compareArtist(g, rock)[4].match).toBe('correct')
-    })
-    it('cross secondary relation is close (mizrahi <-> pop)', () => {
-      expect(compareArtist(mizrahi, pop)[4].match).toBe('close')
-      expect(compareArtist(pop, mizrahi)[4].match).toBe('close')
-    })
-    it('unrelated genres are wrong', () => {
-      expect(compareArtist(rock, pop)[4].match).toBe('wrong')
+    it('two unknown band sizes are never green', () => {
+      expect(tile('rock-band2', 'rock-band2', 1).match).toBe('wrong')
     })
   })
 
   describe('popularity', () => {
-    const rank1 = fixturesById.get('pop-alpha')! // rank 1 = most popular
-    const rank40 = fixturesById.get('pop-beta')! // rank 40, inside the close band
-    const rank900 = fixturesById.get('rock-duo')! // rank 900
-
-    it('same rank is correct', () => {
-      expect(compareArtist(rank1, rank1)[5].match).toBe('correct')
+    it('within 5% of the pool is yellow', () => {
+      expect(popularityCloseSpan(1000)).toBe(50)
+      expect(popularityCloseSpan(100)).toBe(10)
+      expect(tile('pop-beta', 'pop-alpha', 2)).toMatchObject({ match: 'close', arrow: 'up' })
     })
-    it('nearby rank is close with an arrow', () => {
-      const t = compareArtist(rank40, rank1)[5]
-      expect(t.match).toBe('close')
-      expect(t.arrow).toBe('up') // target rank 1 is more popular than guess rank 40
-    })
-    it('distant rank is wrong', () => {
-      const t = compareArtist(rank900, rank1)[5]
-      expect(t.match).toBe('wrong')
-      expect(t.arrow).toBe('up')
-    })
-    it('a less popular guess points down when the target is lower ranked', () => {
-      const t = compareArtist(rank1, rank900)[5]
-      expect(t.match).toBe('wrong')
-      expect(t.arrow).toBe('down')
+    it('far apart is gray; arrow up means the answer is more popular', () => {
+      expect(tile('rock-band', 'pop-alpha', 2)).toMatchObject({ match: 'wrong', arrow: 'up' })
+      expect(tile('pop-alpha', 'rock-band', 2)).toMatchObject({ match: 'wrong', arrow: 'down' })
     })
   })
 
-  it('win condition is identity only, never all-green tiles', () => {
-    // Two artists can tie on every tile and still not be the same artist.
-    const a = fixturesById.get('pop-alpha')!
-    const twin = {
-      ...a,
-      id: 'impostor',
-      nameHe: 'אותו הדבר',
-      popularityRank: a.popularityRank,
-      debutYear: a.debutYear,
-      breakthroughYear: a.breakthroughYear,
-      type: a.type,
-      members: a.members,
-      gender: a.gender,
-      primaryGenre: a.primaryGenre,
-    } as typeof a
-    const tiles = compareArtist(twin, a)
-    expect(tiles.every((t) => t.match === 'correct')).toBe(true)
-    expect(twin.id === a.id).toBe(false)
+  it('gender and genre are green or gray only', () => {
+    expect(tile('pop-beta', 'pop-alpha', 3).match).toBe('wrong')
+    expect(tile('rock-band', 'pop-alpha', 3).match).toBe('wrong')
+    expect(tile('mizrahi-1', 'pop-alpha', 4).match).toBe('wrong')
+    expect(tile('pop-beta', 'pop-alpha', 4).match).toBe('correct')
+  })
+
+  describe('age', () => {
+    // pop-alpha born 1990, pop-beta 1993, hiphop-m 1995, mizrahi-1 died at 45.
+    it('within 7 years is yellow; arrow up means the answer is older', () => {
+      expect(tile('pop-beta', 'pop-alpha', 5)).toMatchObject({ match: 'close', arrow: 'up' })
+      expect(tile('pop-alpha', 'hiphop-m', 5)).toMatchObject({ match: 'close', arrow: 'down' })
+    })
+    it('7 years apart is still yellow, 8 is gray', () => {
+      const t = makeArtist({ id: 't', nameHe: 'ת', birthYear: 1990 })
+      const g7 = makeArtist({ id: 'g7', nameHe: 'ז', birthYear: 1997 })
+      const g8 = makeArtist({ id: 'g8', nameHe: 'ח', birthYear: 1998 })
+      expect(compareArtist(g7, t)[5].match).toBe('close')
+      expect(compareArtist(g8, t)[5].match).toBe('wrong')
+    })
+    it('a deceased artist counts by age at death', () => {
+      // 45 at death vs. a living artist: compared on 45, never on years since birth.
+      expect(tile('mizrahi-1', 'mizrahi-1', 5).match).toBe('correct')
+      expect(compareArtist(A('mizrahi-1'), A('pop-alpha'))[5].value).toBe('45 ז״ל')
+    })
+    it('a band counts years since it formed; unknown is gray', () => {
+      expect(compareArtist(A('rock-band'), A('pop-alpha'))[5].arrow).toBeDefined()
+      const t = tile('unknown-1', 'pop-alpha', 5)
+      expect(t.match).toBe('wrong')
+      expect(t.arrow).toBeUndefined()
+    })
   })
 })
-
-function popBetaMale() {
-  const b = fixturesById.get('pop-beta')!
-  return { ...b, id: 'ignored', nameHe: 'x', gender: 'male' as const }
-}

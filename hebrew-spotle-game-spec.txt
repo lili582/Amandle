@@ -16,11 +16,13 @@ Rules for you, the builder:
   - Code, comments, identifiers and commit messages are in English.
   - Every pure function (compare, normalize, daily index, share text) gets unit
     tests before the UI uses it.
-  - Never hard-code API keys. Read them from .env (see section 6).
-  - Data-fetching scripts run at BUILD TIME in Node, never in the browser.
-    The shipped game is a static site with a bundled JSON file.
+- Never hard-code API keys. Read them from .env (see section 6).
+  - Data is fetched at RUN TIME from the Wikidata Query Service and cached in the
+     browser; nothing collected is committed and there is no build-time data
+     step. See section 6 and README.md. (Sections 5, 7 and 16 below describe the
+     original build-time pipeline design and are kept for reference only.)
   - Do not copy code, data, images, name or branding from spotle.io. This is an
-    original game inspired by the same mechanic (Wordle-style attribute clues).
+     original game inspired by the same mechanic (Wordle-style attribute clues).
 
 
 --------------------------------------------------------------------------------
@@ -94,12 +96,25 @@ Repo layout:
         share.ts
         storage.ts
         stats.ts
-      data/artists.json        generated, committed
-      data/schedule.json       generated, committed
+        formatTile.ts
+        wikidata.ts            live WDQS pool query + Artist normalisation
+        dataLoader.ts          memory -> IndexedDB -> network -> stale cache,
+                               derives the daily schedule
+        idb.ts                 browser cache for the resolved pool
+      data/                    rules only, never collected artist data
+        overrides.json          manual corrections; WINS over API data
+        city-region.json        city name (he/en) -> region enum
+        genre-map.json          Wikidata P136 label -> our genre enum
+        famous-songs.json       curated song title per QID
       components/              App, Board, GuessRow, Tile, SearchBox,
                                EndDialog, StatsDialog, HelpDialog, Legend
       styles.css
     tests/                     mirrors src/lib
+
+  There is no data pipeline and no generated artists/schedule JSON. The roster
+  is queried from the Wikidata Query Service at run time (it serves
+  Access-Control-Allow-Origin: *, so no proxy and no API key) and cached in
+  IndexedDB for 24h.
 
 
 --------------------------------------------------------------------------------
@@ -225,9 +240,11 @@ Game state machine:
 
 
 --------------------------------------------------------------------------------
-5. SEED LIST (names only - all attributes must come from APIs/overrides)
+5. SEED LIST (SUPERSEDED - kept for reference)
 --------------------------------------------------------------------------------
-This list is the INPUT to the pipeline (data/seed-names.json). It is from the
+The seed list is gone: the pool is discovered by querying Wikidata for items
+with a Hebrew Wikipedia article, so no seed list is needed. The original list
+was the INPUT to the pipeline (data/seed-names.json). It is from the
 author's general knowledge and is NOT verified data. The pipeline must resolve
 each name to Wikidata/MusicBrainz IDs and the owner must review the results.
 Expand to 300-500 artists using the Wikidata query in section 6.1.
@@ -531,11 +548,17 @@ ENV FILE (.env.example)
 
 
 --------------------------------------------------------------------------------
-7. DATA PIPELINE (scripts/) AND RANKING
+7. DATA PIPELINE (scripts/) AND RANKING  (SUPERSEDED - kept for reference)
 --------------------------------------------------------------------------------
-Every script: reads the previous stage's file, caches raw responses in
-data/raw/, is re-runnable (skip already-cached entries), throttles per the
-limits above, and logs unresolved names to data/raw/unresolved.json.
+AS BUILT: there are no scripts. `src/lib/wikidata.ts` issues one SPARQL query at
+run time, `src/lib/dataLoader.ts` caches the result in IndexedDB for 24h and
+derives the schedule from it. Popularity ranking is Wikidata sitelinks with the
+QID as tie-break (no Deezer/Last.fm/Spotify metrics). The ranking rules below
+still describe the intent and the field meanings.
+
+Original design: every script reads the previous stage's file, caches raw
+responses in data/raw/, is re-runnable (skip already-cached entries), throttles
+per the limits above, and logs unresolved names to data/raw/unresolved.json.
 
   01-wikidata.ts     seed names + stage 1/2 queries -> QIDs, Hebrew/English
                      labels, gender, dates, places, sitelinks, hewiki title
@@ -648,19 +671,19 @@ Use calendar-date arithmetic on the strings (not 24h millisecond math) so DST
 changes cannot shift the day. The game rolls over at midnight Israel time.
 Default LAUNCH_DATE = "2026-10-01" (config).
 
-Schedule (scripts/08-build-schedule.ts):
+Schedule (derived at run time in src/lib/dataLoader.ts, scheduleFor):
   - Take all answerEligible ids, shuffle with a seeded PRNG (mulberry32, seed
-     from config), write src/data/schedule.json = ordered array of ids.
+     from config). The order is a pure function of the pool, so it is
+     reproducible but nothing is committed to disk.
   - answer = schedule[dayNumber % schedule.length]. No repeats until the whole
-     list is used. Never reshuffle after launch.
-  - Pre-launch the schedule IS regenerated from scratch on every pipeline run
-     (the shuffle is seeded, so an unchanged eligible set yields the same
-     order). This was needed once to re-baseline the pool to the top-1000
-     Spotify artists; after launch treat schedule.json as frozen and only ever
-     append new eligible ids.
+     list is used.
+  - The pool is derived from a live Wikidata query, so a given day's answer is
+     stable for as long as that query returns the same roster (it is cached for
+     24h), but a roster change can reshuffle future days. Accepted trade-off of
+     not committing a dataset.
   - Provide ?day=N (dev only, gated by import.meta.env.DEV) to preview days.
 
-MVP limitation: schedule.json and artists.json ship to the browser, so a curious
+MVP limitation: the roster and schedule both ship to the browser, so a curious
 player can look up the answer. Acceptable for launch.
 v2 upgrade: a tiny serverless function POST /guess {guessId, date} that returns
 only the TileResult[] (and reveals the answer after the game ends), plus a
@@ -725,13 +748,15 @@ Strings (src/strings.he.ts) - centralize ALL text. Starter set:
   lineup values    סולו | צמד | להקה ({n})
   gender values    גבר | אישה | מעורב
   genre values     פופ | מזרחית | רוק | היפ-הופ | ים-תיכוני | אלקטרוני |
-                   אתנו/עולם | שיר עברי | אינדי | פופ דתי | ג'אז/סול | אחר
+                   אתנו/עולם | שיר עברי | אינדי | פופ דתי | ג'אז/סול
+                   (no "other" bucket: an artist either resolves to one of these
+                   or is dropped from the pool)
   region values    גוש דן | מרכז | ירושלים | חיפה והצפון | דרום | חו"ל
   talentShow       כוכב נולד | הכוכב הבא | תוכנית אחרת | ללא
   popularity       show as rank: ★☆☆☆☆ ... ★★★★★
   help title       "איך משחקים?"
   stats title      "סטטיסטיקה"
-  footer           "נתונים: Wikidata, MusicBrainz, Last.fm, Deezer"
+  footer           "נתונים: Wikidata"
 
 
 --------------------------------------------------------------------------------
@@ -818,14 +843,14 @@ PHASE 1 - Core logic (no UI, no network)
   Use a hand-written fixture of 12 fake artists for tests.
   DONE WHEN: all unit tests pass.
 
-PHASE 2 - Data pipeline
-  Implement scripts 01-08 exactly as in sections 6-7 and 9. Start with the 62
-  seed names, then run the Wikidata stage-1 query to grow to 300+.
-  Respect every rate limit; cache raw responses.
-  DONE WHEN: src/data/artists.json + schedule.json are generated, the
-  validation script passes, and a review report lists what needs manual fixes.
-  Then STOP and hand data/overrides.json review to the owner (talent show,
-  regions, wrong genres) - do not invent manual data.
+PHASE 2 - Data layer
+   Implement wikidata.ts + dataLoader.ts + idb.ts as in section 6. One SPARQL
+   query per 24h, normalised in the browser, cached in IndexedDB, with the
+   schedule derived from the result.
+   DONE WHEN: a live query resolves 300+ artists, none of them with the "other"
+   genre, and the loader survives a network failure via the stale cache.
+   Then STOP and hand src/data/overrides.json review to the owner (talent show,
+   regions, wrong genres) - do not invent manual data.
 
 PHASE 3 - UI
   Build the components in section 10 against the real artists.json.

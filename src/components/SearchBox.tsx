@@ -4,6 +4,7 @@ import type { SearchEntry, SearchResult } from '../lib/search'
 import { searchArtists } from '../lib/search'
 import { normalizeHe } from '../lib/normalizeHe'
 import { strings } from '../strings.he'
+import { Icon } from './Icon'
 
 interface Props {
   index: SearchEntry[]
@@ -145,13 +146,15 @@ export function SearchBox({
       <button
         type="button"
         className="submit-btn"
+        aria-label={strings.submit}
+        title={strings.submit}
         disabled={disabled}
         onClick={() => {
           inputRef.current?.focus()
           attemptSubmit()
         }}
       >
-        {strings.submit}
+        <Icon name="search" />
       </button>
       {error && <p className="notice error" role="alert">{error}</p>}
     </div>

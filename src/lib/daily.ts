@@ -60,6 +60,40 @@ export function buildSchedule(ids: string[], seed: string): string[] {
   return seededShuffle(ids.map((id) => ({ id })), seed).map((x) => x.id)
 }
 
+// Daily answers by rendezvous hashing: day d's answer is the eligible id with
+// the lowest hash(seed, d, id), skipping answers used in the previous
+// REPEAT_WINDOW days. Unlike a shuffle, adding or removing one artist from the
+// pool (page views drift a little every day) only changes the days that artist
+// would have won, so players whose pools differ at the margin still agree.
+export const SCHEDULE_DAYS = 3 * 365
+export function rendezvousSchedule(ids: string[], seed: string, days = SCHEDULE_DAYS): string[] {
+  const pool = [...new Set(ids)].sort()
+  if (pool.length === 0) return []
+  const window = Math.min(60, pool.length - 1)
+  const recent: string[] = []
+  const recentSet = new Set<string>()
+  const out: string[] = []
+  for (let d = 0; d < days; d++) {
+    let best = ''
+    let bestHash = Infinity
+    for (const id of pool) {
+      if (recentSet.has(id)) continue
+      const h = hashString(`${seed}|${d}|${id}`)
+      if (h < bestHash || (h === bestHash && id < best)) {
+        bestHash = h
+        best = id
+      }
+    }
+    out.push(best)
+    if (window > 0) {
+      recent.push(best)
+      recentSet.add(best)
+      if (recent.length > window) recentSet.delete(recent.shift()!)
+    }
+  }
+  return out
+}
+
 export function answerForDay(schedule: string[], dayNumber: number): string {
   if (schedule.length === 0) throw new Error('schedule is empty')
   // Non-negative modulus: a day before launch (negative dayNumber) must still
