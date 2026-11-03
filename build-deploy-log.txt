@@ -1,0 +1,26 @@
+[22/10/2026 19:49:42.90] start 
+--- playwright chromium --- 
+--- build:pool --- 
+
+> amandle@0.0.0 build:pool
+> tsx scripts/build-pool.ts
+
+Hebrew Wikipedia: 940 Hebrew singers, 530 Israeli groups in categories
+Wikidata: querying Israeli artists with a Spotify id...
+Wikidata: 2021 rows (957 fetched for category artists)
+Candidates: 1543 Hebrew-singing artists (343 others dropped)
+Spotify search: 2481 artists without a Spotify id on Wikidata
+Spotify search: 100/2481 (84 matched)
+Spotify search: 200/2481 (159 matched)
+Spotify search: 300/2481 (228 matched)
+Spotify search: 400/2481 (307 matched)
+Spotify search: 500/2481 (378 matched)
+Spotify search: 600/2481 (434 matched)
+Spotify search: 700/2481 (492 matched)
+Spotify search: 800/2481 (546 matched)
+Spotify search: 900/2481 (617 matched)
+Spotify search: 1000/2481 (697 matched)
+Spotify search: 1100/2481 (757 matched)
+Spotify search: 1200/2481 (807 matched)
+page.close: Protocol error (Target.disposeBrowserContext): Failed to find context with id C4694C1E5510199A72FBC56DC4C58335
+^C

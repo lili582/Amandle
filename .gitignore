@@ -10,13 +10,10 @@ lerna-debug.log*
 node_modules
 dist
 dist-ssr
+# Generated nightly by `npm run build:pool`, never committed
+public/data/
 *.local
 .env
-data/raw
-
-# Old bundled location (generated data). Pipeline outputs now live in public/
-# which IS committed so static hosts can serve them.
-src/data
 
 # Editor directories and files
 .vscode/*
@@ -28,3 +25,9 @@ src/data
 *.njsproj
 *.sln
 *.sw?
+
+.vercel
+
+# Spotify resume cache written by build:pool
+.cache
+logs

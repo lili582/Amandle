@@ -75,7 +75,8 @@ describe('storage', () => {
 
   it('cleans up only stale saved games', () => {
     const old = gameKey('2000-01-01')
-    const fresh = gameKey('2026-10-01')
+    // Relative to today: a fixed date goes stale (this failed from Nov 2026).
+    const fresh = gameKey(new Date().toISOString().slice(0, 10))
     window.localStorage.setItem(old, '{}')
     window.localStorage.setItem(fresh, '{}')
     const removed = cleanupOldGames(30)

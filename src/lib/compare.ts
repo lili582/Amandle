@@ -1,93 +1,84 @@
 import type { Artist, Match, TileResult } from '../types'
-import { artistAge } from './age'
+import { artistAge, breakthroughOf } from './age'
+import { tileValue } from './formatTile'
 
-function yearTiles(
-  guessValue: number,
-  targetValue: number,
-  field: 'debutYear' | 'breakthrough',
-): TileResult {
-  // 0 is this codebase's "unknown" sentinel. Two unknowns must never read as a
-  // match, and the distance between a real year and 0 is meaningless, so an
-  // unknown side yields "wrong" with no direction. 75 pool artists have no
-  // breakthrough year and 11 have neither birth nor debut year.
-  if (guessValue <= 0 || targetValue <= 0) return { field, match: 'wrong' }
-  if (guessValue === targetValue) return { field, match: 'correct' }
-  const diff = Math.abs(guessValue - targetValue)
-  const match: Match = diff <= 3 ? 'close' : 'wrong'
-  const arrow = guessValue < targetValue ? 'up' : 'down'
-  return { field, match, arrow }
+// Spotle's rules, tile by tile:
+//   breakthrough green = same year, yellow = within 7 years, arrow to the answer
+//   members     green = same lineup size, otherwise gray
+//   popularity  green = same rank, yellow = within 5% of the pool (Spotle:
+//               50 spots out of 1,000), arrow to the answer
+//   gender      green / gray
+//   genre       green / gray
+//   age         green = same age, yellow = within 7 years, arrow to the
+//               answer (replaces Spotle's nationality: everyone is Israeli)
+
+export const BREAKTHROUGH_CLOSE_YEARS = 7
+
+export function popularityCloseSpan(poolSize: number): number {
+  return Math.max(10, Math.round(poolSize * 0.05))
 }
 
-// members === 0 means "unknown", not "zero members". In the current dataset
-// that is every band in the pool, so two unknowns must never be treated as a
-// match: doing so hands out a "correct" tile for a number nobody measured.
-function lineupTile(guess: Artist, target: Artist): TileResult {
-  const field = 'lineup' as const
-  const guessKnown = guess.members > 0
-  const targetKnown = target.members > 0
-
-  if (guess.type === target.type && guessKnown && targetKnown && guess.members === target.members) {
-    return { field, match: 'correct' }
+function breakthroughTile(guess: Artist, target: Artist): TileResult {
+  const field = 'breakthrough' as const
+  const g = breakthroughOf(guess)
+  const t = breakthroughOf(target)
+  // 0 = unknown: never a match and no meaningful direction.
+  if (g <= 0 || t <= 0) return { field, match: 'wrong' }
+  if (g === t) return { field, match: 'correct' }
+  return {
+    field,
+    match: Math.abs(g - t) <= BREAKTHROUGH_CLOSE_YEARS ? 'close' : 'wrong',
+    arrow: g < t ? 'up' : 'down',
   }
-  const bothGroups = guess.type !== 'solo' && target.type !== 'solo'
-  if (bothGroups) {
-    // Only claim a direction when both counts are real numbers.
-    if (guessKnown && targetKnown) {
-      const match: Match = 'close'
-      const arrow = guess.members < target.members ? 'up' : 'down'
-      return { field, match, arrow }
-    }
-    return { field, match: 'close' }
-  }
-  return { field, match: 'wrong' }
 }
 
-function genderTile(guess: Artist, target: Artist): TileResult {
-  const field = 'gender' as const
-  if (guess.gender === target.gender) return { field, match: 'correct' }
-  const oneIsMixed =
-    (guess.gender === 'mixed') !== (target.gender === 'mixed')
-  return { field, match: oneIsMixed ? 'close' : 'wrong' }
+function membersTile(guess: Artist, target: Artist): TileResult {
+  const field = 'members' as const
+  const known = guess.members > 0 && target.members > 0
+  return { field, match: known && guess.members === target.members ? 'correct' : 'wrong' }
 }
 
-function genreTile(guess: Artist, target: Artist): TileResult {
-  const field = 'genre' as const
-  if (guess.primaryGenre === target.primaryGenre) return { field, match: 'correct' }
-  const cross =
-    target.secondaryGenres.includes(guess.primaryGenre) ||
-    guess.secondaryGenres.includes(target.primaryGenre)
-  const shared = guess.secondaryGenres.some((g) => target.secondaryGenres.includes(g))
-  return { field, match: cross || shared ? 'close' : 'wrong' }
-}
-
-// How close two popularity ranks must be to count as "close". popularityRank
-// spans the whole pool (1..POOL_SIZE), so the old "adjacent tier" rule has no
-// direct equivalent: a fixed 1-position gap is far too strict on a 1000-wide
-// scale. 50 positions (~5% of the pool) is the point where two artists still
-// feel comparable to a player. Tune here if the tile feels too tight or loose.
-const POPULARITY_CLOSE_SPAN = 50
-
-function popularityTile(guess: Artist, target: Artist): TileResult {
+function popularityTile(guess: Artist, target: Artist, poolSize: number): TileResult {
   const field = 'popularity' as const
   if (guess.popularityRank === target.popularityRank) return { field, match: 'correct' }
   const diff = Math.abs(guess.popularityRank - target.popularityRank)
-  const match: Match = diff <= POPULARITY_CLOSE_SPAN ? 'close' : 'wrong'
-  // Rank 1 is the most popular, so a guess with the larger rank is the less
-  // popular one and the player has to move "up" the list to reach the target.
-  const arrow = guess.popularityRank > target.popularityRank ? 'up' : 'down'
-  return { field, match, arrow }
+  const match: Match = diff <= popularityCloseSpan(poolSize) ? 'close' : 'wrong'
+  // Rank 1 is the most popular: a larger rank means "go up the chart".
+  return { field, match, arrow: guess.popularityRank > target.popularityRank ? 'up' : 'down' }
 }
 
-// Compare a guessed artist against the target. Pure and deterministic.
-// Returns tiles in on-screen (right-to-left) field order. Never call this to
-// decide a win; the win condition is guess.id === target.id.
-export function compareArtist(guess: Artist, target: Artist): TileResult[] {
+function genderTile(guess: Artist, target: Artist): TileResult {
+  return { field: 'gender', match: guess.gender === target.gender ? 'correct' : 'wrong' }
+}
+
+function genreTile(guess: Artist, target: Artist): TileResult {
+  return { field: 'genre', match: guess.primaryGenre === target.primaryGenre ? 'correct' : 'wrong' }
+}
+
+export const AGE_CLOSE_YEARS = 7
+
+function ageTile(guess: Artist, target: Artist): TileResult {
+  const field = 'age' as const
+  const g = artistAge(guess)
+  const t = artistAge(target)
+  if (g <= 0 || t <= 0) return { field, match: 'wrong' }
+  if (g === t) return { field, match: 'correct' }
+  return {
+    field,
+    match: Math.abs(g - t) <= AGE_CLOSE_YEARS ? 'close' : 'wrong',
+    arrow: g < t ? 'up' : 'down',
+  }
+}
+
+// Compare a guessed artist against the target. Pure and deterministic. The
+// win condition is guess.id === target.id, never "all tiles green".
+export function compareArtist(guess: Artist, target: Artist, poolSize = 1000): TileResult[] {
   return [
-    yearTiles(artistAge(guess), artistAge(target), 'debutYear'),
-    yearTiles(guess.breakthroughYear, target.breakthroughYear, 'breakthrough'),
-    lineupTile(guess, target),
+    breakthroughTile(guess, target),
+    membersTile(guess, target),
+    popularityTile(guess, target, poolSize),
     genderTile(guess, target),
     genreTile(guess, target),
-    popularityTile(guess, target),
-  ]
+    ageTile(guess, target),
+  ].map((t) => ({ ...t, value: tileValue(guess, t.field) }))
 }

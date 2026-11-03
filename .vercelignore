@@ -1,0 +1,12 @@
+# Files the Vercel CLI should NOT upload.
+# Exists so public/data/pool.json (gitignored) still ships with the site.
+node_modules
+dist
+.env
+*.local
+*.log
+start-log.txt
+.git
+.cache
+build-deploy-log.txt
+logs

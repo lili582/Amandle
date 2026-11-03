@@ -1,12 +1,12 @@
 import { useEffect, useState } from 'react'
-import type { Artist, FamousSong, Match } from '../types'
+import type { Artist, Match } from '../types'
+import { TILE_FIELDS } from '../types'
 import { strings } from '../strings.he'
 import { israelDateString, israelMidnightEpoch, tomorrowIsraelDateString } from '../lib/daily'
 import { buildShareText, shareText } from '../lib/share'
 import { reportLink } from '../lib/report'
-import { soundcloudEmbedUrl, soundcloudSearchUrl } from '../lib/soundcloud'
+import { tileValue } from '../lib/formatTile'
 import { Modal } from './Modal'
-import type { ArtistType, Gender, Genre, Region } from '../types'
 
 interface EndModalProps {
   status: 'won' | 'lost'
@@ -15,23 +15,18 @@ interface EndModalProps {
   guessesUsed: number
   maxGuesses: number
   rows: Match[][]
+  // Retro (yesterday) round: no countdown; offer a way back to today.
+  retro?: boolean
+  // Switch between today's game and yesterday's (button hidden when absent).
+  onSwitchMode?: () => void
   onClose: () => void
 }
 
-// SoundCloud embeds need an oEmbed track URL; when only a search result exists
-// we fall back to opening SoundCloud search (never fabricate a track URL).
-function soundcloudTarget(song: FamousSong | undefined): string | null {
-  if (song?.soundcloud) return song.soundcloud
-  return null
-}
-
-function RevealCard({ artist }: { artist: Artist }) {
-  const song = artist.famousSong
-  const trackUrl = soundcloudTarget(song)
-
+// Picture comes from Deezer (see lib/enrich.ts).
+function RevealCard({ artist, retro }: { artist: Artist; retro: boolean }) {
   return (
     <div className="reveal-card">
-      <h3 className="reveal-title">{strings.revealCardTitle}</h3>
+      <h3 className="reveal-title">{retro ? strings.revealCardTitleYesterday : strings.revealCardTitle}</h3>
       <div className="reveal-main">
         {artist.imageUrl ? (
           <img
@@ -47,35 +42,27 @@ function RevealCard({ artist }: { artist: Artist }) {
         )}
         <div className="reveal-details">
           <p className="reveal-name">{artist.nameHe}</p>
-          <p className="reveal-sub">{artist.nameEn ?? artist.primaryGenre}</p>
+          {artist.nameEn && <p className="reveal-sub">{artist.nameEn}</p>}
         </div>
       </div>
 
-      {song && (
-        <div className="reveal-song">
-          <p className="reveal-song-label">{strings.revealHitLabel}</p>
-          <p className="reveal-song-title">{song.title}</p>
-          {trackUrl ? (
-            <iframe
-              className="reveal-soundcloud"
-              src={soundcloudEmbedUrl(trackUrl)}
-              allow="autoplay"
-              title={`${song.title} — ${artist.nameHe}`}
-              loading="lazy"
-            />
-          ) : (
-            <a
-              className="reveal-soundcloud-link"
-              href={soundcloudSearchUrl(song.title)}
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              {strings.revealSearch}
-            </a>
-          )}
-        </div>
-      )}
+      {artist.imageUrl && <p className="reveal-credit">{strings.revealCredit}</p>}
     </div>
+  )
+}
+
+function ArtistDetailTable({ artist }: { artist: Artist }) {
+  return (
+    <table className="artist-params-table">
+      <tbody>
+        {TILE_FIELDS.map((f) => (
+          <tr key={f}>
+            <td className="param-label">{strings.columns[f]}</td>
+            <td className="param-value">{tileValue(artist, f)}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
   )
 }
 
@@ -99,111 +86,6 @@ function useCountdown(): string {
   return formatClock(midnight - nowMs)
 }
 
-function getArtistTypeLabel(type: ArtistType): string {
-  switch (type) {
-    case 'solo': return strings.lineupValues.solo
-    case 'duo': return strings.lineupValues.duo
-    case 'band': return strings.lineupValues.band.replace('{n}', String(type))
-  }
-}
-
-function getGenderLabel(gender: Gender): string {
-  switch (gender) {
-    case 'male': return strings.genderValues.male
-    case 'female': return strings.genderValues.female
-    case 'mixed': return strings.genderValues.mixed
-  }
-}
-
-function getGenreLabels(genres: Genre[]): string {
-  return genres.map(g => strings.genreValues[g] ?? g).join(' · ')
-}
-
-function getRegionLabel(region: Region): string {
-  switch (region) {
-    case 'tel-aviv-area': return 'גוש דן'
-    case 'center': return 'שרון / שפלה / מרכז'
-    case 'jerusalem': return 'ירושלים והסביבה'
-    case 'haifa-north': return 'חיפה, קריות, צפון'
-    case 'south': return 'באר שבע, נגב, אילת, דרום'
-    case 'abroad': return 'נולד/הוקם מחוץ לישראל'
-  }
-}
-
-function ArtistDetailTable({ artist }: { artist: Artist }) {
-  const ageAtDeath = artist.diedYear ? artist.birthYear ? artist.diedYear - artist.birthYear : '??' : undefined
-  const song = artist.famousSong
-
-  return (
-    <div className="artist-table">
-      <h3 className="artist-table-title">{strings.revealCardTitle}</h3>
-      <table className="artist-params-table">
-        <tbody>
-          <tr>
-            <td className="param-label">שם עברי</td>
-            <td className="param-value">{artist.nameHe}</td>
-          </tr>
-          {artist.nameEn && (
-            <tr>
-              <td className="param-label">שם אנגלי</td>
-              <td className="param-value">{artist.nameEn}</td>
-            </tr>
-          )}
-          {artist.aliases.length > 0 && (
-            <tr>
-              <td className="param-label">כינויים</td>
-              <td className="param-value">{artist.aliases.join(' • ')}</td>
-            </tr>
-          )}
-          <tr>
-            <td className="param-label">גיל / משך פעילות</td>
-            <td className="param-value">
-              {artist.debutYear}
-              {ageAtDeath ? ` - ${ageAtDeath} (${strings.ageDeceased.male.replace('{age}', String(ageAtDeath))})` : ''}
-            </td>
-          </tr>
-          <tr>
-            <td className="param-label">שנת פריצה</td>
-            <td className="param-value">{artist.breakthroughYear}</td>
-          </tr>
-          <tr>
-            <td className="param-label">הרכב</td>
-            <td className="param-value">{getArtistTypeLabel(artist.type)}</td>
-          </tr>
-          <tr>
-            <td className="param-label">מגדר</td>
-            <td className="param-value">{getGenderLabel(artist.gender)}</td>
-          </tr>
-          <tr>
-            <td className="param-label">ז׳אנר ראשי</td>
-            <td className="param-value">{strings.genreValues[artist.primaryGenre] ?? artist.primaryGenre}</td>
-          </tr>
-          {artist.secondaryGenres.length > 0 && (
-            <tr>
-              <td className="param-label">ז׳אנרים נוספים</td>
-              <td className="param-value">{getGenreLabels(artist.secondaryGenres)}</td>
-            </tr>
-          )}
-          <tr>
-            <td className="param-label">פופולריות</td>
-            <td className="param-value">{strings.popularityText.replace('{n}', String(artist.popularityRank))}</td>
-          </tr>
-          <tr>
-            <td className="param-label">אזור</td>
-            <td className="param-value">{getRegionLabel(artist.region)}</td>
-          </tr>
-          {song && (
-            <tr>
-              <td className="param-label">הלהיט הגדול</td>
-              <td className="param-value" colSpan={2}>{song.title}</td>
-            </tr>
-          )}
-        </tbody>
-      </table>
-    </div>
-  )
-}
-
 export function EndModal({
   status,
   artist,
@@ -211,6 +93,8 @@ export function EndModal({
   guessesUsed,
   maxGuesses,
   rows,
+  retro = false,
+  onSwitchMode,
   onClose,
 }: EndModalProps) {
   const [copied, setCopied] = useState(false)
@@ -236,17 +120,24 @@ export function EndModal({
 
   return (
     <Modal title={status === 'won' ? strings.winShort : strings.loseShort} onClose={onClose}>
-      <RevealCard artist={artist} />
+      <RevealCard artist={artist} retro={retro} />
       <ArtistDetailTable artist={artist} />
       <p className="end-headline">{head}</p>
       <p className="end-sub">{sub}</p>
-      <p className="countdown">{strings.nextIn.replace('{time}', countdown)}</p>
+      {!retro && <p className="countdown">{strings.nextIn.replace('{time}', countdown)}</p>}
       <div className="end-actions">
         <button type="button" className="primary-btn" onClick={() => void onShare()}>
           {strings.shareTitle}
         </button>
         {copied && <span className="copy-ok">{strings.copied}</span>}
       </div>
+      {onSwitchMode && (
+        <div className="end-actions">
+          <button type="button" className="secondary-btn" onClick={onSwitchMode}>
+            {retro ? strings.backToToday : strings.playYesterday}
+          </button>
+        </div>
+      )}
       <p className="report-link">
         <a href={reportLink(dayNumber)}>{strings.reportMistake}</a>
       </p>

@@ -107,3 +107,14 @@ export function cleanupOldGames(maxDays = 30): number {
     return 0
   }
 }
+// Removes everything the game stored in localStorage (games, stats, settings).
+// Returns the number of keys removed. Used by "delete my data" in settings.
+export function clearAllLocalData(): number {
+  try {
+    const keys = Object.keys(window.localStorage).filter((k) => k.startsWith(`${PREFIX}:`))
+    for (const key of keys) window.localStorage.removeItem(key)
+    return keys.length
+  } catch {
+    return 0
+  }
+}

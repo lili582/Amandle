@@ -1,12 +1,20 @@
 import type { Artist } from '../types'
 
-// The age displayed in the "גיל" tile. Prefer the artist's birth year; groups
-// without one fall back to their founding/first-release year so the tile is
-// never empty. Age is anchored to the reference year (default: current year).
+// The age tile: a solo artist's age (age at death if deceased); for a group,
+// years since it was formed. 0 = unknown.
 export function artistAge(artist: Artist, refYear = new Date().getFullYear()): number {
-  const origin = artist.birthYear ?? artist.debutYear
-  // Guard the sentinel: birthYear ?? debutYear falls through to 0 when both are
-  // missing, and refYear - 0 rendered as an age of 2026.
-  if (!origin || origin <= 0) return 0
-  return Math.max(0, refYear - origin)
+  if (artist.type === 'solo') {
+    if (!artist.birthYear) return 0
+    return Math.max(0, (artist.diedYear ?? refYear) - artist.birthYear)
+  }
+  return artist.foundedYear ? Math.max(0, refYear - artist.foundedYear) : 0
+}
+
+export function isDeceased(artist: Artist): boolean {
+  return artist.type === 'solo' && artist.diedYear != null
+}
+// The year of the first hit; falls back to the career start when no hit
+// could be dated.
+export function breakthroughOf(a: Artist): number {
+  return a.breakthroughYear > 0 ? a.breakthroughYear : a.debutYear
 }

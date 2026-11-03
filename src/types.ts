@@ -3,82 +3,76 @@
 export type ArtistType = 'solo' | 'duo' | 'band'
 export type Gender = 'male' | 'female' | 'mixed'
 
-// Kept in the data model for internal analytics; NOT rendered as a tile.
-export type Region =
-  | 'tel-aviv-area' // גוש דן
-  | 'center' // שרון / שפלה / מרכז
-  | 'jerusalem' // ירושלים והסביבה
-  | 'haifa-north' // חיפה, קריות, צפון
-  | 'south' // באר שבע, נגב, אילת, דרום
-  | 'abroad' // נולד/הוקם מחוץ לישראל
-
+// Every genre a tile can show. There is deliberately no "other" bucket: an
+// artist only enters the pool once at least one of its Wikidata genre labels
+// resolves to one of these (see lib/genreRules.ts).
 export type Genre =
-  | 'pop' // פופ
-  | 'mizrahi' // מזרחית
-  | 'rock' // רוק
-  | 'hiphop' // היפ-הופ / ראפ
-  | 'mediterranean' // ים-תיכוני
-  | 'electronic' // אלקטרוני / טראנס
-  | 'ethnic-world' // אתנו / עולם
-  | 'folk-israeli' // שיר עברי / פולק
-  | 'indie-alt' // אינדי / אלטרנטיבי
-  | 'religious-pop' // פופ דתי/חסידי
-  | 'jazz-soul' // ג'אז / סול
-  | 'other'
+  | 'pop'
+  | 'mizrahi'
+  | 'rock'
+  | 'hiphop'
+  | 'mediterranean'
+  | 'electronic'
+  | 'ethnic-world'
+  | 'folk-israeli'
+  | 'indie-alt'
+  | 'religious-pop'
+  | 'jazz-soul'
+  | 'classical'
 
-export interface FamousSong {
-  title: string // Hebrew title of the artist's biggest hit
-  soundcloud?: string // SoundCloud track URL (embedable); undefined -> search link fallback
+export interface TopTrack {
+  title: string
+  preview?: string // 30-second MP3 preview from Deezer
+  link?: string // deezer.com track page
 }
 
 export interface Artist {
   id: string // stable slug, e.g. "omer-adam"
-  nameHe: string // display name, e.g. "עומר אדם"
-  nameEn?: string // e.g. "Omer Adam"
-  aliases: string[] // extra searchable names (he + en + nicknames)
-  debutYear: number // first release / formation year
-  birthYear?: number // birth year (solo/duo); used for the age tile
-  breakthroughYear: number // year the artist first broke through with a hit
-  diedYear?: number // year the artist died (optional; used for "age at death" display)
+  nameHe: string // display name: the Hebrew Wikipedia title without its "(להקה)"-style disambiguator
+  wikiTitle: string // exact Hebrew Wikipedia article title (used for page views)
+  nameEn?: string
+  aliases: string[] // extra searchable names
+  // Career start from Wikidata (or the first album on MusicBrainz). Used as
+  // the breakthrough year when no hit could be dated. 0 = unknown.
+  debutYear: number
+  // Year of the artist's first big song (see lib/enrich.ts). 0 = not known yet.
+  breakthroughYear: number
+  birthYear?: number // solo artists
+  diedYear?: number // solo artists
+  foundedYear?: number // groups: formation year (Wikidata P571 / P2031)
   type: ArtistType
-  members: number // 1 for solo, 2 for duo, N for band
-  gender: Gender // for groups: 'mixed' if both genders present
+  members: number // 1 solo, 2 duo, N band, 0 = unknown (until enriched)
+  gender: Gender
+  genderKnown: boolean // false = group whose members' genders are not on Wikidata yet
   primaryGenre: Genre
-  secondaryGenres: Genre[] // 0-2 items, used for "close" matches
-  popularityRank: number // 1 = most popular in the pool, POOL_SIZE = least popular
-  region: Region
-  answerEligible: boolean // may be picked as a daily answer
-  famousSong?: FamousSong // revealed after the round ends
+  secondaryGenres: Genre[]
+  popularityRank: number // 1..POOL_SIZE, unique per artist; 1 = most Spotify monthly listeners (see lib/rank.ts)
+  answerEligible: boolean
   ids: {
-    wikidata?: string
+    wikidata: string
     musicbrainz?: string
     deezer?: number
-    lastfm?: string
-    spotify?: string
+    spotify?: string // the artist's biggest Spotify profile (nightly pool only)
   }
-  metrics?: {
-    deezerFans?: number
-    lastfmListeners?: number
-    hewikiPageviews90d?: number
-    wikidataSitelinks?: number
-    spotifyStreams?: number
-    spotifyRank?: number
+  metrics: {
+    wikidataSitelinks: number
+    hewikiViews60d: number
+    spotifyListeners?: number // monthly listeners worldwide (nightly pool only)
+    spotifyListenersIL?: number // monthly listeners in Israel - the ranking score (nightly pool only)
   }
+  // Set by lib/enrich.ts (MusicBrainz + Deezer, fetched on demand).
+  enriched?: boolean
   imageUrl?: string
+  topTrack?: TopTrack
 }
 
 // ---- Comparison / game types ----
 
 export type Match = 'correct' | 'close' | 'wrong'
 
-export const TILE_FIELDS = [
-  'debutYear',
-  'breakthrough',
-  'lineup',
-  'gender',
-  'genre',
-  'popularity',
-] as const
+// Spotle's tile order: breakthrough year in place of the debut album, and age
+// in place of nationality (every artist here is Israeli).
+export const TILE_FIELDS = ['breakthrough', 'members', 'popularity', 'gender', 'genre', 'age'] as const
 export type TileField = (typeof TILE_FIELDS)[number]
 
 export interface TileResult {
@@ -86,6 +80,9 @@ export interface TileResult {
   match: Match
   // 'up' = the target value is HIGHER (later year / more popular) than the guess
   arrow?: 'up' | 'down'
+  // The guessed artist's value as shown when the guess was made, so a saved
+  // board renders the same after a reload.
+  value?: string
 }
 
 export type GameStatus = 'playing' | 'won' | 'lost'
@@ -98,7 +95,7 @@ export interface GuessRecord {
 export interface SaveState {
   guesses: GuessRecord[]
   status: GameStatus
-  date: string // YYYY-MM-DD the saved game belongs to
+  date: string
 }
 
 export interface StatsState {
@@ -106,6 +103,6 @@ export interface StatsState {
   wins: number
   streak: number
   maxStreak: number
-  dist: number[] // index = guess count (1..MAX_GUESSES)
+  dist: number[]
   lastWinDate: string | null
 }
