@@ -14,3 +14,6 @@ C:\Program Files\nodejs\npm.cmd
 [2m16:31:06[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.tsx[22m
 [2m16:31:06[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.tsx[22m
 [2m16:31:07[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/Game.tsx, /src/components/EndModal.tsx, /src/components/GuessBoard.tsx[22m
+[2m18:18:03[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.tsx, /src/Game.tsx, /src/components/HelpModal.tsx, /src/components/EndModal.tsx, /src/components/SearchBox.tsx, /src/components/GuessBoard.tsx, /src/components/StatsModal.tsx, /src/components/SettingsModal.tsx, /src/components/Modal.tsx[22m
+[2m18:18:03[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/Game.tsx[22m
+[2m18:18:04[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.css[22m
