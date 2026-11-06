@@ -16,7 +16,6 @@ export const MAX_GUESSES = 10
 // Israeli calendar date when the daily puzzle series starts.
 export const LAUNCH_DATE = '2026-10-01'
 export const TZ = 'Asia/Jerusalem'
-export const SHOW_IMAGES = false
 
 // How long a Wikidata-derived dataset is considered fresh before we re-query
 // the endpoint. Also pins the daily puzzle: within the TTL every player reuses

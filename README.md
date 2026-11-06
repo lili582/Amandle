@@ -53,7 +53,7 @@ and can be the daily answer. The file is generated, never committed
 
 1. **Candidates**: every page in Hebrew Wikipedia's Hebrew-singer and
    Israeli-band categories, plus Israeli artists on Wikidata whose languages
-   include Hebrew. Hand-checked artists (`src/lib/curatedArtists.ts`) are
+   include Hebrew. Hand-checked artists (`src/artist/curatedArtists.ts`) are
    always candidates; `EXCLUDED_QIDS` there are never in the pool.
 2. **Spotify**: each artist's public page is opened in headless Chromium
    (Playwright) to read its monthly listeners and top 5 cities. Artists with
@@ -63,12 +63,12 @@ and can be the daily answer. The file is generated, never committed
    `MIN_LISTENERS_IL` estimated Israeli listeners are left out. Hand-checked
    artists skip both filters.
 4. **Rank**: by Spotify **monthly listeners**, the number on the artist's
-   page, highest first (`rankBySpotify` in `src/lib/spotify.ts`). Ties are
+   page, highest first (`rankBySpotify` in `src/sources/spotify.ts`). Ties are
    broken by Wikidata sitelinks, then by id, so the order is stable.
 5. **Every tile filled**: walking the ranking from the top, gaps Wikidata
-   leaves are filled from MusicBrainz and Deezer (`src/lib/fill.ts`); an
+   leaves are filled from MusicBrainz and Deezer (`src/pool/fill.ts`); an
    artist still missing a tile is skipped and the next one takes its place
-   (`src/lib/complete.ts`).
+   (`src/game/complete.ts`).
 6. **Write** the top 350 to `public/data/pool.json`. If fewer than `MIN_POOL`
    artists resolve, nothing is written.
 
@@ -83,7 +83,7 @@ two weeks, and a run that fails is retried the next Sunday.
 
 1. Download the live `pool.json` and check its age (`npm run check:pool -- --stale`).
 2. Build a new pool (up to 3 tries, resuming from the cache).
-3. **Safety check** (`src/lib/poolCheck.ts`): the new pool is not deployed when
+3. **Safety check** (`src/pool/poolCheck.ts`): the new pool is not deployed when
    it has fewer than 300 artists, or when more than 30% of the live pool would
    be replaced. The run summary lists who joined, who left and who moved 20+
    places. Each new pool is kept as a run artifact for 90 days.
@@ -111,22 +111,48 @@ Optional variable `SITE_URL` if the site moves (default
 retries), then deploy to Vercel with the Vercel CLI. A log of each run is
 written to `logs/`.
 
+## How the code is organised
+
+`src/` is split into modules, one folder per job. Each folder has an
+`index.ts`: that file is the module's interface, and other modules import
+from it only (`import { isComplete } from '../game'`). Files inside a
+folder import each other directly.
+
+| Module | Job | Uses |
+|--------|-----|------|
+| `artist/` | What an artist is: the `Artist` type, the `pool.json` shape, ranks 1..N, age, Hebrew name normalising, hand-checked artists and genres. Pure. | `config` |
+| `text/` | Every Hebrew text: UI strings, legal pages. | `config` |
+| `storage/` | What's saved in the player's browser: board, stats, settings (localStorage), cached pool (IndexedDB), "delete my data". | `config` |
+| `sources/` | Outside websites, one file each: Wikidata, Hebrew Wikipedia, Spotify, MusicBrainz + Deezer. | `artist`, `storage` |
+| `game/` | The rules of a round: daily answer, tiles (`compare.ts`), complete artists, search, share, stats, and the `useGame` hook. | `artist`, `text`, `storage`, `sources` |
+| `pool/` | Build time only: fill gaps, safety-check a new `pool.json`. | `artist`, `game`, `sources` |
+| `data/` | Play time: load the pool into the browser (pool.json → day cache → Wikidata fallback). | `artist`, `game`, `sources`, `storage` |
+| `ui/` | React screens and dialogs. | `game`, `data`, `storage`, `text`, `artist` |
+
+Arrows only point down the table, so there are no loops: `ui/` sits on top,
+`artist/` and `text/` at the bottom. `App.tsx` loads the data (`data/`) and
+shows the game (`ui/`); `scripts/` (build time) use `pool/`, `sources/`,
+`artist/` and `game/`. `config.ts` holds every setting and is used by all.
+
+Tests mirror the folders (`tests/game/compare.test.ts` tests
+`src/game/compare.ts`) and may import a module's inner files directly.
+
 ## Data at play time
 
 | Source | Used for |
 |--------|----------|
 | `data/pool.json` | the pool and every tile value |
-| MusicBrainz / Deezer | on demand for guessed artists: picture, top tracks, 30-second preview on the reveal card (`src/lib/enrich.ts`) |
+| MusicBrainz / Deezer | on demand for guessed artists: picture, top tracks, 30-second preview on the reveal card (`src/sources/enrich.ts`) |
 | Wikidata + Hebrew Wikipedia page views | fallback only when `pool.json` is missing (local dev without `build:pool`) |
 
 The pool is cached in IndexedDB until the Israeli midnight (keyed by build, so
 a deploy replaces it at once); per-artist enrichment is cached for 7 days.
 
 Age is the artist's age (age at death for a deceased artist, shown as "ז״ל");
-for a group, years since it was formed (`src/lib/age.ts`).
+for a group, years since it was formed (`src/artist/age.ts`).
 
 The daily answer uses rendezvous hashing over the pool (`rendezvousSchedule` in
-`src/lib/daily.ts`), so a pool update only changes the days a joining or
+`src/game/daily.ts`), so a pool update only changes the days a joining or
 leaving artist would have won, and an answer never repeats within 60 days.
 
 `localStorage` (namespace `amandle:v1`) holds today's game, settings and stats.
@@ -149,7 +175,7 @@ CI (`.github/workflows/ci.yml`) runs lint, typecheck and tests on every push and
 ## Legal pages
 
 Footer links (also reachable as `#privacy`, `#terms`, `#accessibility`) open
-three Hebrew pages whose text lives in `src/legal.he.ts`:
+three Hebrew pages whose text lives in `src/text/legal.he.ts`:
 
 - **מדיניות פרטיות** — no accounts, cookies, analytics or ads; what is kept in
   localStorage/IndexedDB and for how long; which third-party services the

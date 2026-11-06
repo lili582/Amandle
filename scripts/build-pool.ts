@@ -7,7 +7,7 @@
 // 1. Candidates, from two sources:
 //    a. Hebrew Wikipedia categories: every page in "זמרים השרים בעברית" /
 //       "זמרות השרות בעברית" and the Israeli band categories
-//       (src/lib/hewikiCategories.ts). This is what finds acts whose Wikidata
+//       (src/sources/hewikiCategories.ts). This is what finds acts whose Wikidata
 //       item is too sparse for (b) - איפה הילד?, טיפקס, יוני בלוך.
 //    b. Wikidata: Israeli music artists with a Spotify id (P1902), kept when
 //       Hebrew is among their languages (hebrewSingerQids).
@@ -39,10 +39,7 @@ import {
   spotifyIdsByQid,
   type SearchCandidate,
   type SparqlRow,
-} from '../src/lib/wikidata.ts'
-import { fetchCategoryCandidates } from '../src/lib/hewikiCategories.ts'
-import { chromium, type Browser, type Page } from 'playwright'
-import {
+  fetchCategoryCandidates,
   fetchSpotifyImage,
   israelAudience,
   parseMonthlyListeners,
@@ -50,12 +47,11 @@ import {
   rankBySpotify,
   type CityListeners,
   type SpotifyHit,
-} from '../src/lib/spotify.ts'
-import type { Artist, Genre } from '../src/types.ts'
-import { assignRanks } from '../src/lib/rank.ts'
-import { fillUntil } from '../src/lib/fill.ts'
-import type { PrebuiltPool } from '../src/lib/dataLoader.ts'
-import { CURATED_ARTISTS, curatedArtist, EXCLUDED_QIDS } from '../src/lib/curatedArtists.ts'
+} from '../src/sources/index.ts'
+import { chromium, type Browser, type Page } from 'playwright'
+import type { Artist, Genre, PrebuiltPool } from '../src/artist/index.ts'
+import { assignRanks, CURATED_ARTISTS, curatedArtist, EXCLUDED_QIDS } from '../src/artist/index.ts'
+import { fillUntil } from '../src/pool/index.ts'
 
 const args = process.argv.slice(2)
 const outArg = args.indexOf('--out')
@@ -335,7 +331,7 @@ async function main() {
   const artists = built.filter((a) => keep(a) && !EXCLUDED_QIDS.has(a.id))
   log(`Candidates: ${artists.length} Hebrew-singing artists (${built.length - artists.length} others dropped)`)
 
-  // Hand-checked artists (src/lib/curatedArtists.ts) are always candidates,
+  // Hand-checked artists (src/artist/curatedArtists.ts) are always candidates,
   // with their curated tiles and Spotify profile.
   const curated = new Set(CURATED_ARTISTS.map((c) => c.qid))
   for (const c of CURATED_ARTISTS) {

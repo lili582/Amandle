@@ -9,10 +9,10 @@
 
 import { readFile, writeFile } from 'node:fs/promises'
 import { POOL_SIZE } from '../src/config.ts'
-import { fillUntil } from '../src/lib/fill.ts'
-import { isComplete, missingFields } from '../src/lib/complete.ts'
-import { assignRanks } from '../src/lib/rank.ts'
-import type { PrebuiltPool } from '../src/lib/dataLoader.ts'
+import { fillUntil } from '../src/pool/index.ts'
+import { isComplete, missingFields } from '../src/game/index.ts'
+import { assignRanks } from '../src/artist/index.ts'
+import type { PrebuiltPool } from '../src/artist/index.ts'
 
 const args = process.argv.slice(2)
 const arg = (name: string, dflt: string) => (args.includes(name) ? args[args.indexOf(name) + 1] : dflt)

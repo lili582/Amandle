@@ -1,9 +1,8 @@
 import { useEffect, useState } from 'react'
 import { GAME_NAME } from './config'
-import { strings } from './strings.he'
-import { loadGameData, type LoadResult } from './lib/dataLoader'
-import { Game } from './Game'
-import { LegalFooter } from './components/LegalFooter'
+import { strings } from './text'
+import { loadGameData, type LoadResult } from './data'
+import { Game, LegalFooter } from './ui'
 import './App.css'
 
 type LoadState =

@@ -2,6 +2,26 @@
 
 All notable changes to Amandle. Versions follow [SemVer](https://semver.org/).
 
+## [0.10.2] - 2026-11-06
+
+### Changed
+- Code split into modules, one folder per job: `artist/`, `text/`,
+  `storage/`, `sources/`, `game/`, `pool/`, `data/`, `ui/` (replacing the
+  flat `src/lib/`, `src/hooks/` and `src/components/`). Each has an
+  `index.ts` that other modules import from. Tests moved to matching folders
+  under `tests/`. No change to how the game plays. The map is in the README
+  ("How the code is organised").
+- `src/types.ts` split into `artist/types.ts` (the artist, the pool.json
+  shape) and `game/types.ts` (tiles, guesses, saved board, stats,
+  `GameData`).
+- `isComplete` / `missingFields` are the only names for the "every tile
+  filled" check (the `hasAllData`, `hasAllDetails` and `missingDetails`
+  aliases are gone).
+
+### Removed
+- Unused code: `lib/region.ts`, `lib/soundcloud.ts` (and their tests) and the
+  `SHOW_IMAGES` setting.
+
 ## [0.10.1] - 2026-11-06
 
 ### Removed

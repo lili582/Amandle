@@ -4,12 +4,12 @@
 //   npm run check:pool -- --stale live-pool.json
 //
 // --next/--prev: prints the change summary (also to the GitHub Actions run
-// summary) and exits 1 when the new pool looks broken (src/lib/poolCheck.ts).
+// summary) and exits 1 when the new pool looks broken (src/pool/poolCheck.ts).
 // A missing or unreadable --prev only skips the comparison.
 // --stale: prints "stale=true|false" for GITHUB_OUTPUT (missing file = stale).
 
 import { appendFile, readFile } from 'node:fs/promises'
-import { checkPool, isStale, poolAgeDays, summaryMarkdown, type PoolFile } from '../src/lib/poolCheck.ts'
+import { checkPool, isStale, poolAgeDays, summaryMarkdown, type PoolFile } from '../src/pool/index.ts'
 
 const args = process.argv.slice(2)
 const arg = (name: string) => {
