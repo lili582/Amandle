@@ -1,5 +1,5 @@
-// Nightly pool build: the top POOL_SIZE Hebrew-singing Israeli artists by
-// Spotify listeners *in Israel*.
+// Pool build (every two weeks, .github/workflows/update-pool.yml): the top
+// POOL_SIZE Hebrew-singing Israeli artists by Spotify monthly listeners.
 //
 //   npm run build:pool                       -> public/data/pool.json
 //   npm run build:pool -- --out dist/data/pool.json
@@ -7,7 +7,7 @@
 // 1. Candidates, from two sources:
 //    a. Hebrew Wikipedia categories: every page in "זמרים השרים בעברית" /
 //       "זמרות השרות בעברית" and the Israeli band categories
-//       (src/lib/hewikiCategories.ts). This is what finds acts whose Wikidata
+//       (src/sources/hewikiCategories.ts). This is what finds acts whose Wikidata
 //       item is too sparse for (b) - איפה הילד?, טיפקס, יוני בלוך.
 //    b. Wikidata: Israeli music artists with a Spotify id (P1902), kept when
 //       Hebrew is among their languages (hebrewSingerQids).
@@ -15,9 +15,10 @@
 // 2. Spotify: each artist's public page, rendered in headless Chromium
 //    (Playwright): monthly listeners and the top-5 cities from the About card.
 //    Artists with no Spotify id on Wikidata are found with Spotify search.
-// 3. Score = listeners in Israeli cities. Artists whose top-city audience is
-//    mostly abroad (< MIN_ISRAEL_SHARE in Israel) or who have fewer than
-//    MIN_LISTENERS_IL Israeli listeners are dropped.
+// 3. Filters: artists whose top-city audience is mostly abroad
+//    (< MIN_ISRAEL_SHARE in Israel) or who have fewer than MIN_LISTENERS_IL
+//    estimated Israeli listeners are dropped.
+//    Rank = Spotify monthly listeners, the number on the artist's page.
 // 4. Fill the gaps (fill.ts), keep the first POOL_SIZE complete artists, rank
 //    them 1..N and write data/pool.json (generated, never committed).
 //
@@ -38,10 +39,7 @@ import {
   spotifyIdsByQid,
   type SearchCandidate,
   type SparqlRow,
-} from '../src/lib/wikidata.ts'
-import { fetchCategoryCandidates } from '../src/lib/hewikiCategories.ts'
-import { chromium, type Browser, type Page } from 'playwright'
-import {
+  fetchCategoryCandidates,
   fetchSpotifyImage,
   israelAudience,
   parseMonthlyListeners,
@@ -49,12 +47,11 @@ import {
   rankBySpotify,
   type CityListeners,
   type SpotifyHit,
-} from '../src/lib/spotify.ts'
-import type { Artist, Genre } from '../src/types.ts'
-import { assignRanks } from '../src/lib/rank.ts'
-import { fillUntil } from '../src/lib/fill.ts'
-import type { PrebuiltPool } from '../src/lib/dataLoader.ts'
-import { CURATED_ARTISTS, curatedArtist } from '../src/lib/curatedArtists.ts'
+} from '../src/sources/index.ts'
+import { chromium, type Browser, type Page } from 'playwright'
+import type { Artist, Genre, PrebuiltPool } from '../src/artist/index.ts'
+import { assignRanks, CURATED_ARTISTS, curatedArtist, EXCLUDED_QIDS } from '../src/artist/index.ts'
+import { fillUntil } from '../src/pool/index.ts'
 
 const args = process.argv.slice(2)
 const outArg = args.indexOf('--out')
@@ -331,10 +328,10 @@ async function main() {
     return hebrew.has(a.id)
   }
   const built = buildArtists(rows, undefined, true, hints)
-  const artists = built.filter(keep)
+  const artists = built.filter((a) => keep(a) && !EXCLUDED_QIDS.has(a.id))
   log(`Candidates: ${artists.length} Hebrew-singing artists (${built.length - artists.length} others dropped)`)
 
-  // Hand-checked artists (src/lib/curatedArtists.ts) are always candidates,
+  // Hand-checked artists (src/artist/curatedArtists.ts) are always candidates,
   // with their curated tiles and Spotify profile.
   const curated = new Set(CURATED_ARTISTS.map((c) => c.qid))
   for (const c of CURATED_ARTISTS) {
@@ -479,7 +476,7 @@ async function main() {
   for (const [qid] of tail) best.delete(qid)
   log(`Listener floor: dropped ${tail.length} artists with < ${LISTENER_FLOOR.toLocaleString('en')} listeners in Israel`)
 
-  // Most listened in Israel first; fill the gaps Wikidata leaves (fill.ts)
+  // Most monthly listeners first; fill the gaps Wikidata leaves (fill.ts)
   // and keep the first POOL_SIZE artists with every tile known (complete.ts).
   const ranked = rankBySpotify(artists, best, Number.MAX_SAFE_INTEGER)
   const report = await fillUntil(ranked, POOL_SIZE, {
@@ -517,7 +514,7 @@ async function main() {
   await writeFile(OUT, JSON.stringify(out))
   const top = pool
     .slice(0, 20)
-    .map((a) => `${a.popularityRank}. ${a.nameHe} (${a.metrics.spotifyListenersIL?.toLocaleString('en')} in Israel)`)
+    .map((a) => `${a.popularityRank}. ${a.nameHe} (${a.metrics.spotifyListeners?.toLocaleString('en')} monthly listeners)`)
   log(`Wrote ${pool.length} artists to ${OUT} in ${Math.round((Date.now() - t0) / 1000)}s`)
   log(top.join('\n'))
 }

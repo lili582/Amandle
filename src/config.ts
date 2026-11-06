@@ -16,7 +16,6 @@ export const MAX_GUESSES = 10
 // Israeli calendar date when the daily puzzle series starts.
 export const LAUNCH_DATE = '2026-10-01'
 export const TZ = 'Asia/Jerusalem'
-export const SHOW_IMAGES = false
 
 // How long a Wikidata-derived dataset is considered fresh before we re-query
 // the endpoint. Also pins the daily puzzle: within the TTL every player reuses
@@ -25,15 +24,18 @@ export const DATA_CACHE_TTL_MS = 24 * 60 * 60 * 1000
 
 // Bump together with a breaking shape change of the cached dataset. The old
 // value is keyed into IndexedDB, so bumping it discards stale caches.
-export const DATA_SCHEMA_VERSION = 'v12'
+export const DATA_SCHEMA_VERSION = 'v13'
 
-// How many of the most popular artists can be a daily answer. Everyone in the
-// pool can still be guessed.
-export const ANSWER_POOL_SIZE = 150
 
 // The pool: the Hebrew-singing Israeli artists with the most Spotify monthly
-// listeners *in Israel*. Built by scripts/build-pool.ts, served as data/pool.json.
-export const POOL_SIZE = 1000
+// listeners (artists whose audience is mostly abroad are left out first).
+// Built by scripts/build-pool.ts every two weeks (.github/workflows/update-pool.yml),
+// served as data/pool.json.
+export const POOL_SIZE = 350
+
+// How many of the most popular artists can be a daily answer. Every artist in
+// the pool can be guessed, and (since 0.7.0) every one can also be the answer.
+export const ANSWER_POOL_SIZE = POOL_SIZE
 
 // An artist enters the pool only when at least this share of the listeners in
 // their Spotify top cities are in Israel. Keeps out Israeli-born acts whose

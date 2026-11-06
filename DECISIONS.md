@@ -802,3 +802,114 @@ but few Spotify listeners. פול טראנק sings mostly in English; added anyw
 the owner's request (it is one of the most-streamed Israeli acts in Israel).
 אביהו פנחסוב is the Spotify profile of his band מועדון הקצב (8 members), so
 the entry is a band; the band name is a search alias.
+
+
+## Cache per deploy; 55 more artists (2026-11-05)
+
+The owner deployed 0.4.0 and still saw the old pool. The deploy was live
+(273 artists), but the client pins the pool in IndexedDB for the whole Israeli
+day under `dataset:<schema version>`, and the schema version had not changed
+since that morning's deploy, so the browser kept the morning's pool until
+midnight. Fix: the cache key now includes a build id (`VITE_BUILD_ID`, set in
+vite.config.ts on every build): `dataset:v13:<build>`. Within one deploy the
+pool is still pinned for the day (the daily answer can't shift mid-day); a new
+deploy replaces it immediately. Old keys are left behind in IndexedDB (a few
+hundred KB each) and are cleared by "delete my data".
+
+Also added 55 artists from the Spotify Israel daily-chart totals (kworb.net)
+and well-known names, each with a Hebrew Wikipedia article: birth year and
+career start from the article's infobox ("התחלת פעילות"), which is used for
+both debut and breakthrough unless the article names a later breakthrough.
+Left out: chart names with no article (עידו מלכה, שירז אברהם, בנאל בן ציון,
+הגר יפת, נתנאל דהאן...), producers/DJs (אורי שוחט, ישי סוויסה, איתי גלו),
+groups with unclear lineups (שוטי הנבואה, סינרגיה, יציאת חירום, שפתיים) and
+profiles with under ~5K monthly listeners (להקת שלוה, גבריאל בלחסן, טל סונדק,
+שלמה בר).
+
+## 2026-11-05 — six requested artists (0.6.0)
+
+Added שחר אבן צור, חמי רודנר, ליהי טולדנו, שאזאמאט, הבילויים and המכשפות as
+curated entries. Debut is the infobox career start; breakthrough is the first
+album where it came later (חמי רודנר: איפה הילד? 1993; הבילויים: 2003;
+המכשפות: 1994; שאזאמאט: 2019). המכשפות has two Spotify profiles; the one with
+~30K monthly listeners ("The Witches") is used, not "HaMachshefot" (~1K).
+
+## 2026-11-06 — every artist can be the daily answer (0.7.0)
+
+Lili asked for every guessable artist to be possible as the daily answer.
+`ANSWER_POOL_SIZE` now equals `POOL_SIZE`, so `answerEligible` is true for the
+whole pool (334 today) and the rendezvous schedule draws from all of them.
+Trade-off: less-known artists (bottom of the pool, ~30K listeners) will now
+come up as answers. Adding ids reshuffles the schedule, so the answer of the
+deploy day can change once.
+
+## 2026-11-06 — pool of 350 (0.8.0)
+
+Lili asked for the game to be the 350 most popular artists. `POOL_SIZE` is now
+350 (was 1000; the pool never got past ~334 anyway), and with
+`ANSWER_POOL_SIZE = POOL_SIZE` all 350 can be the daily answer. The nightly
+build keeps the top 350 by Israeli listeners, so an artist below #350 drops out.
+
+16 artists were added to reach 350, each with a Hebrew Wikipedia article and a
+Spotify profile with ~28K+ monthly listeners: איציק דדיה, חיים ישראל, נעמי שמר, מוטי שטיינמץ, חנן יובל, דנה ברגר, שושנה דמארי, נמואל, הפרברים, דקלון, יזהר כהן, עדן אלנה, אילן וירצברג, חלב ודבש, ציון גולן, מאיה בוסקילה.
+Checked but left out: הגבעטרון (choir, no member count), עמירן דביר and חיים
+אוליאל (no career start), אבי טולדנו and אביהו מדינה (would have been #351-352),
+תמיר גרינברג, קובי אוז, התרנגולים, ג'ו עמר (under ~13K listeners), מאיה
+בלזיצמן (Spotify profile is the duo with מתן אפרת).
+For two-profile artists the profile with more listeners is used (נעמי שמר:
+"Naomi Shemer", not "נעמי שמר" with almost none; נמואל, not "נמואל הרוש").
+
+## 2026-11-06 — swap five artists (0.9.0)
+
+Lili asked to replace נמואל → שריף, חנן יובל → נועם קלינשטיין, מוטי שטיינמץ →
+דן תורן, חיים ישראל → השמחות, מאי ספדיה → האחים צברי. Removing a curated entry
+isn't enough (the nightly Wikidata pass could still rank them in), so
+`EXCLUDED_QIDS` in curatedArtists.ts lists removed artists and both
+build-pool.ts and the client's Wikidata fallback drop them.
+
+Data: שריף (מייק שריף, b. 1979, albums from 1992, "ילד הפלא הדרוזי");
+נועם קלינשטיין (Wikipedia spells it with one yod; "נועם קליינשטיין" is an
+alias; b. 2001, first single 2019); דן תורן (1960–2024, career from 1979);
+השמחות (formed 1996 by ישראל ברייט, first album 1998, six members);
+האחים צברי (punk duo of brothers יוני and אבישי צברי, 2013). האחים צברי has
+only ~6K monthly listeners, so it sits at #350 and is the first to drop out if
+the nightly build finds a more popular artist.
+
+## 2026-11-06 — rank by monthly listeners, update every two weeks (0.10.0)
+
+**Ranking.** Lili asked for the popularity order to be right, and chose Spotify
+monthly listeners as the rank: the plain number on the artist's page. The old
+score was "listeners in Israel" = total × the Israeli share of the top 5
+cities. For 342 of 350 artists all 5 cities are Israeli, so it already was the
+total; for the other 8 it pushed artists down (נגה ארז: 864K listeners, ranked
+#33 on a 485K estimate). With the new rule, re-sorting the current pool moves
+7 artists by 5+ places: נגה ארז 33→4, נטע ברזילי 36→26, עפרה חזה 84→51,
+יעקב שוואקי 172→122, אברהם פריד 184→147, מידד טסה 162→155, יונתן רזאל 205→198.
+Kept: the Israel filter (`MIN_ISRAEL_SHARE`, keeps out Linet and the like) and
+the listener floor (`MIN_LISTENERS_IL`), both still on the Israeli estimate.
+Considered and not chosen: blending in Hebrew Wikipedia page views to lift
+classic artists (אריק איינשטיין #43, יוני בלוך #199).
+The live pool.json was left as is (Lili's choice); the new rule applies from
+the next build.
+
+**Two-week update.** Lili wanted the pool to stay current on its own, every two
+weeks, and deployed without review. `update-pool.yml` runs on GitHub Actions
+every Sunday 01:17 UTC and rebuilds only when the live pool is 13+ days old, so
+a failed run is retried a week later rather than two. GitHub cron has no
+"every other week", and checking the live file's age also covers manual
+deploys in between. Deploy uses the Vercel CLI with a token, the same way as
+`build-and-deploy.bat` (Lili chose CLI deploys over connecting the repo to
+Vercel), so pool.json still isn't committed. Failures email the owner (GitHub's
+default for scheduled runs).
+
+**Safety check.** Because nobody reviews the update, `src/lib/poolCheck.ts`
+blocks the deploy when the new pool has < 300 artists or replaces > 30% of the
+live one (both signs that Spotify scraping broke). A manual run can pass
+`force` to allow a big change; the size rule can't be skipped. Risk: Spotify
+may block page reads from GitHub's servers; the build then fails and the live
+pool stays, and `build-and-deploy.bat` on Lili's PC still works.
+
+**Cleanup.** Removed the GitHub Pages workflow (the site is on Vercel),
+`deploy-vercel.bat`, the one-off `push-fix.*` scripts and old logs.
+`start-log.txt` is rewritten by `start-game.bat` on every run, so it is now
+gitignored.

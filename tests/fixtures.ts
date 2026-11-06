@@ -1,4 +1,4 @@
-import type { Artist } from '../src/types'
+import type { Artist } from '../src/artist/types'
 
 let q = 100
 export function makeArtist(partial: Partial<Artist> & Pick<Artist, 'id' | 'nameHe'>): Artist {
