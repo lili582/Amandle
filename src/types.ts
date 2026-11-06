@@ -57,8 +57,8 @@ export interface Artist {
   metrics: {
     wikidataSitelinks: number
     hewikiViews60d: number
-    spotifyListeners?: number // monthly listeners worldwide (nightly pool only)
-    spotifyListenersIL?: number // monthly listeners in Israel - the ranking score (nightly pool only)
+    spotifyListeners?: number // Spotify monthly listeners - the ranking score (pool build only)
+    spotifyListenersIL?: number // estimated listeners in Israel - Israel filter and listener floor (pool build only)
   }
   // Set by lib/enrich.ts (MusicBrainz + Deezer, fetched on demand).
   enriched?: boolean

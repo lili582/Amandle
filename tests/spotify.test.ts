@@ -130,18 +130,20 @@ describe('Israeli audience', () => {
     expect(israelAudience(4200, [])).toEqual({ listeners: 4200, share: 1 })
   })
 
-  it('ranks by listeners in Israel, not worldwide', () => {
-    const local = makeArtist({ id: 'Q10', nameHe: 'מקומי', ids: { wikidata: 'Q10' } })
-    const global = makeArtist({ id: 'Q11', nameHe: 'בינלאומי', ids: { wikidata: 'Q11' } })
+  it('ranks by monthly listeners, and keeps the Israeli estimate', () => {
+    // נגה ארז: 864K monthly listeners, ~485K estimated in Israel, ranks above
+    // an artist with 600K listeners who are all in Israel.
+    const noga = makeArtist({ id: 'Q10', nameHe: 'נגה ארז', ids: { wikidata: 'Q10' } })
+    const local = makeArtist({ id: 'Q11', nameHe: 'מקומי', ids: { wikidata: 'Q11' } })
     const ranked = rankBySpotify(
-      [global, local],
+      [local, noga],
       new Map([
-        ['Q10', { id: 'sl', listeners: 500_000, israelListeners: 400_000 }],
-        ['Q11', { id: 'sg', listeners: 9_000_000, israelListeners: 50_000 }],
+        ['Q10', { id: 'sn', listeners: 864_287, israelListeners: 485_327 }],
+        ['Q11', { id: 'sl', listeners: 600_000, israelListeners: 600_000 }],
       ]),
     )
     expect(ranked.map((a) => a.id)).toEqual(['Q10', 'Q11'])
-    expect(ranked[0].metrics.spotifyListenersIL).toBe(400_000)
-    expect(ranked[1].metrics.spotifyListeners).toBe(9_000_000)
+    expect(ranked[0].metrics.spotifyListeners).toBe(864_287)
+    expect(ranked[0].metrics.spotifyListenersIL).toBe(485_327)
   })
 })

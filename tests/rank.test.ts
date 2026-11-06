@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { assignRanks, normalizeRanks, ranksAreDense } from '../src/lib/rank'
 import { rankBySpotify } from '../src/lib/spotify'
 import { validateGameData } from '../src/lib/dataLoader'
-import { ANSWER_POOL_SIZE } from '../src/config'
+import { ANSWER_POOL_SIZE, POOL_SIZE } from '../src/config'
 import { makeArtist } from './fixtures'
 import type { Artist } from '../src/types'
 
@@ -30,14 +30,20 @@ describe('normalizeRanks', () => {
     expect(ranksAreDense(out)).toBe(true)
   })
 
-  it('keeps at most 1000 artists, ranked 1-1000', () => {
+  it('keeps at most POOL_SIZE (350) artists, ranked 1-350', () => {
+    expect(POOL_SIZE).toBe(350)
     const pool = Array.from({ length: 1200 }, (_, i) => artist(i + 1, { popularityRank: 1 }))
     const out = normalizeRanks(pool)
-    expect(out).toHaveLength(1000)
-    expect(new Set(out.map((a) => a.popularityRank)).size).toBe(1000)
+    expect(out).toHaveLength(POOL_SIZE)
+    expect(new Set(out.map((a) => a.popularityRank)).size).toBe(POOL_SIZE)
     expect(Math.min(...out.map((a) => a.popularityRank))).toBe(1)
-    expect(Math.max(...out.map((a) => a.popularityRank))).toBe(1000)
+    expect(Math.max(...out.map((a) => a.popularityRank))).toBe(POOL_SIZE)
     expect(out.filter((a) => a.answerEligible)).toHaveLength(ANSWER_POOL_SIZE)
+  })
+
+  it('lets every artist in the pool be a daily answer', () => {
+    const out = normalizeRanks(Array.from({ length: 334 }, (_, i) => artist(i + 1, { popularityRank: i + 1 })))
+    expect(out.every((a) => a.answerEligible)).toBe(true)
   })
 
   it('drops repeated artists (same id or same Spotify profile)', () => {

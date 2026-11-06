@@ -2,6 +2,82 @@
 
 All notable changes to Amandle. Versions follow [SemVer](https://semver.org/).
 
+## [0.10.1] - 2026-11-06
+
+### Removed
+- "מתוך 350 אמנים ישראלים" from the subtitle under the title.
+- The game number ("משחק מספר N") above the guess counter.
+
+## [0.10.0] - 2026-11-06
+
+### Changed
+- Popularity rank = Spotify monthly listeners (the number on the artist's
+  page), highest first. Before, it was an estimate of listeners in Israel.
+  Artists whose audience is mostly abroad are still left out. Takes effect at
+  the next pool build; the live pool is unchanged.
+
+### Added
+- Automatic pool update every two weeks (`.github/workflows/update-pool.yml`):
+  rebuilds `pool.json` when the live one is 13+ days old and deploys it to
+  Vercel. Needs the `VERCEL_TOKEN`, `VERCEL_ORG_ID` and `VERCEL_PROJECT_ID`
+  secrets.
+- Safety check before deploying (`npm run check:pool`, `src/lib/poolCheck.ts`):
+  no deploy when the new pool has fewer than 300 artists or more than 30% of
+  it changed. The run summary lists who joined, left and moved 20+ places.
+
+### Removed
+- GitHub Pages deploy (`.github/workflows/deploy.yml`); the site is on Vercel.
+- `deploy-vercel.bat` (`build-and-deploy.bat` deploys), `push-fix.bat`,
+  `push-fix.sh` and old log files.
+
+### Docs
+- README rewritten to match how the game works now (pool.json, 350 artists,
+  Vercel, the two-week update).
+
+## [0.9.0] - 2026-11-06
+
+### Changed
+- Swapped five artists: שריף, נועם קלינשטיין, דן תורן, השמחות and האחים צברי
+  are in; נמואל, חנן יובל, מוטי שטיינמץ, חיים ישראל and מאי ספדיה are out.
+- Removed artists are on an exclusion list (`EXCLUDED_QIDS`), so the nightly
+  build won't bring them back. Still 350 artists.
+
+## [0.8.0] - 2026-11-06
+
+### Changed
+- The pool is the 350 most popular artists (`POOL_SIZE` 1000 → 350), and every
+  one of them can be the daily answer. The popularity tile's help text now says
+  1–350.
+
+### Added
+- 16 artists to fill the pool to 350: איציק דדיה, חיים ישראל, נעמי שמר, מוטי שטיינמץ, חנן יובל, דנה ברגר, שושנה דמארי, נמואל, הפרברים, דקלון, יזהר כהן, עדן אלנה, אילן וירצברג, חלב ודבש, ציון גולן, מאיה בוסקילה.
+  149 of the 350 are hand-checked.
+
+## [0.7.0] - 2026-11-06
+
+### Changed
+- Every artist in the pool can now be the daily answer, not only the top 150
+  (`ANSWER_POOL_SIZE` = `POOL_SIZE`). The answer schedule is recomputed, so the
+  day's answer may change once when this is deployed.
+
+## [0.6.0] - 2026-11-05
+
+### Added
+- שחר אבן צור, חמי רודנר, ליהי טולדנו, שאזאמאט, הבילויים, המכשפות (hand-checked
+  against Hebrew Wikipedia). The pool is now 334 artists; 133 of them hand-checked.
+
+## [0.5.0] - 2026-11-05
+
+### Added
+- 55 more artists (Spotify Israel daily charts and well-known names, each
+  checked against Hebrew Wikipedia): קפה שחור חזק, יצחק קלפטר, גיא מזיג, שי צברי, מיקה משה, אושיק לוי, ריף כהן, החלונות הגבוהים, אריק לביא, זקני צפת, תמיר בר, גיא ויהל, יוסי שטרית, שקד קוממי, רוחמה רז, עדי ביטי, טדי נגוסה, סיון טלמור, יפה ירקוני, אלון אולארצ'יק, דוד ד'אור, דנה אינטרנשיונל, פבלו רוזנברג, עידן יניב, סגיב כהן, אביאור מלסה, אהרן רזאל, דני ליטני, גבע אלון, החצר האחורית, צוקוש, יעל דקלבאום, אלי לוזון, בן סנוף, רבקה זהר, אורנה ומשה דץ, ערן צור, אנדרדוג, טל טירנגל, אבנר גדסי, רגב הוד, שולה חן, נופר סלמאן, דורית ראובני, עמיר לב, אלון דה לוקו, ג'קי מקייטן, עוזיה צדוק, דודו אלהרר, ששי קשת, אסתר עופרים, מיכאל בן דוד, קובי מרימי, יהלי סובול, בועז מעודה.
+  The pool is now 328 artists; 127 of them hand-checked.
+
+### Fixed
+- New artists didn't show up after a deploy until the next day: players'
+  cached pool is now keyed by the build, so every deploy replaces it at once.
+  `DATA_SCHEMA_VERSION` v13.
+
 ## [0.4.0] - 2026-11-03
 
 ### Added

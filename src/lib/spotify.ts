@@ -134,23 +134,24 @@ export async function fetchMonthlyListeners(
 export interface SpotifyHit {
   id: string
   listeners: number
-  // Monthly listeners in Israel (sum of the Israeli cities among the top five).
-  // When present, this is the ranking score instead of the worldwide total, so
-  // an Israeli-born act with a mostly foreign audience doesn't outrank the
-  // artists every Israeli knows.
+  // Estimated monthly listeners in Israel (see israelAudience). Not the ranking
+  // score since 0.10.0: build-pool.ts uses it for the Israel filter and the
+  // listener floor, and it is stored as metrics.spotifyListenersIL.
   israelListeners?: number
 }
 
-// Keeps the `size` artists with the most listeners (in Israel when known) and
-// ranks them 1..n, one artist per rank (sitelinks, then QID, break ties - the
-// page figure is rounded). Two Wikidata items that resolve to the same Spotify
-// profile count once. The top ANSWER_POOL_SIZE can be a daily answer.
+// Keeps the `size` artists with the most Spotify monthly listeners (the number
+// on the artist's page) and ranks them 1..n, one artist per rank (sitelinks,
+// then QID, break ties - the page figure is rounded). Two Wikidata items that
+// resolve to the same Spotify profile count once. Acts whose audience is
+// mostly abroad never get here: build-pool.ts drops them first. The top
+// ANSWER_POOL_SIZE (the whole pool) can be a daily answer.
 export function rankBySpotify(
   artists: Artist[],
   listeners: Map<string, SpotifyHit>,
   size = POOL_SIZE,
 ): Artist[] {
-  const score = (h: SpotifyHit) => h.israelListeners ?? h.listeners
+  const score = (h: SpotifyHit) => h.listeners
   const withListeners = artists
     .filter((a) => {
       const hit = listeners.get(a.id)
@@ -168,9 +169,6 @@ export function rankBySpotify(
         },
       }
     })
-  const byListeners = compareByPopularity((a) => {
-    const m = a.metrics as { spotifyListeners?: number; spotifyListenersIL?: number }
-    return m.spotifyListenersIL ?? m.spotifyListeners ?? 0
-  })
+  const byListeners = compareByPopularity((a) => a.metrics.spotifyListeners ?? 0)
   return assignRanks(withListeners.sort(byListeners), size)
 }

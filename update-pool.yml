@@ -1,0 +1,133 @@
+name: Update pool
+
+# Every two weeks: rebuild public/data/pool.json from Spotify + Wikidata and
+# deploy it to Vercel. The job wakes up every Sunday and only rebuilds when
+# the live pool is 13+ days old, so a missed or failed run is retried the
+# next Sunday instead of waiting another two weeks.
+#
+# Needs three repository secrets (Settings > Secrets and variables > Actions):
+#   VERCEL_TOKEN       a token from vercel.com/account/tokens
+#   VERCEL_ORG_ID      "orgId" from .vercel/project.json
+#   VERCEL_PROJECT_ID  "projectId" from .vercel/project.json
+# Optional repository variable SITE_URL (default https://amandle-eta.vercel.app).
+
+on:
+  schedule:
+    # Sundays 01:17 UTC = 03:17 Israel winter time (04:17 in summer).
+    - cron: '17 1 * * 0'
+  workflow_dispatch:
+    inputs:
+      rebuild:
+        description: Rebuild now, even if the live pool is less than 13 days old
+        type: boolean
+        default: true
+      force:
+        description: Deploy even if more than 30% of the pool changed
+        type: boolean
+        default: false
+
+concurrency:
+  group: update-pool
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 330
+    env:
+      SITE_URL: ${{ vars.SITE_URL || 'https://amandle-eta.vercel.app' }}
+      LIVE_POOL: ${{ github.workspace }}/../live-pool.json
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+
+      - name: Fetch the live pool
+        run: curl -fsSL "$SITE_URL/data/pool.json" -o "$LIVE_POOL" || echo "Could not fetch the live pool; it counts as stale."
+
+      - name: Is the pool due for an update?
+        id: due
+        run: |
+          npm run --silent check:pool -- --stale "$LIVE_POOL" | tee due.txt
+          if [ "${{ github.event_name == 'workflow_dispatch' && inputs.rebuild }}" = "true" ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          elif grep -q '^stale=true' due.txt; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            echo "The live pool is fresh; nothing to do." | tee -a "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Restore the Spotify cache
+        if: steps.due.outputs.run == 'true'
+        uses: actions/cache@v4
+        with:
+          path: .cache
+          key: spotify-cache-${{ github.run_id }}
+          restore-keys: spotify-cache-
+
+      - name: Install Chromium
+        if: steps.due.outputs.run == 'true'
+        run: npx playwright install --with-deps chromium
+
+      - name: Build the pool
+        if: steps.due.outputs.run == 'true'
+        # Each retry resumes from .cache (same as build-and-deploy.bat).
+        run: |
+          for try in 1 2 3; do
+            echo "::group::build:pool try $try"
+            if npm run build:pool; then echo "::endgroup::"; exit 0; fi
+            echo "::endgroup::"
+            echo "build:pool failed (try $try)"
+            sleep 60
+          done
+          exit 1
+
+      - name: Safety check
+        if: steps.due.outputs.run == 'true'
+        run: npm run --silent check:pool -- --next public/data/pool.json --prev "$LIVE_POOL" ${{ (github.event_name == 'workflow_dispatch' && inputs.force) && '--force' || '' }}
+
+      - name: Keep a copy of the new pool
+        if: steps.due.outputs.run == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: pool-${{ github.run_number }}
+          path: public/data/pool.json
+          retention-days: 90
+
+      - name: Tests
+        if: steps.due.outputs.run == 'true'
+        run: |
+          npm run typecheck
+          npm test
+
+      - name: Deploy to Vercel
+        if: steps.due.outputs.run == 'true'
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+        run: |
+          if [ -z "$VERCEL_TOKEN" ] || [ -z "$VERCEL_ORG_ID" ] || [ -z "$VERCEL_PROJECT_ID" ]; then
+            echo "::error::Missing VERCEL_TOKEN / VERCEL_ORG_ID / VERCEL_PROJECT_ID secrets. Nothing was deployed."
+            exit 1
+          fi
+          npx --yes vercel@latest deploy --prod --yes --token "$VERCEL_TOKEN"
+
+      - name: Check the live site has the new pool
+        if: steps.due.outputs.run == 'true'
+        run: |
+          want=$(node -p "require('./public/data/pool.json').generatedAt")
+          for i in 1 2 3 4 5 6; do
+            got=$(curl -fsSL "$SITE_URL/data/pool.json" | node -p "JSON.parse(require('fs').readFileSync(0,'utf8')).generatedAt" || true)
+            if [ "$got" = "$want" ]; then echo "Live pool updated ($want)." | tee -a "$GITHUB_STEP_SUMMARY"; exit 0; fi
+            sleep 20
+          done
+          echo "::error::The live site still serves an older pool ($got, expected $want)."
+          exit 1

@@ -112,8 +112,7 @@ function DayBoard({ data, source, mode, index, onSwitchMode }: DayBoardProps) {
         </h1>
         <p className="app-subtitle">
           {strings.gameInfo
-            .replace('{max}', String(game.maxGuesses))
-            .replace('{n}', data.artists.length.toLocaleString('he-IL'))}
+            .replace('{max}', String(game.maxGuesses))}
         </p>
       </div>
 
@@ -131,7 +130,6 @@ function DayBoard({ data, source, mode, index, onSwitchMode }: DayBoardProps) {
       )}
 
       <p className="counter" aria-live="polite" aria-atomic="true">
-        <span className="day-number">{strings.numberOfDay.replace('{n}', String(game.dayNumber + 1))}</span>
         <span className="guess-count">
           {strings.guessCounter
             .replace('{n}', String(Math.min(game.guesses.length + (finished ? 0 : 1), game.maxGuesses)))

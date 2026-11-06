@@ -50,7 +50,7 @@ export function assignRanks(ordered: Artist[], size = POOL_SIZE): Artist[] {
 export function normalizeRanks(artists: Artist[], size = POOL_SIZE): Artist[] {
   const key = (a: Artist) =>
     Number.isFinite(a.popularityRank) && a.popularityRank >= 1 ? a.popularityRank : Number.MAX_SAFE_INTEGER
-  const listeners = (a: Artist) => a.metrics.spotifyListenersIL ?? (a as Artist & Extra).metrics.spotifyListeners ?? 0
+  const listeners = (a: Artist) => (a as Artist & Extra).metrics.spotifyListeners ?? 0
   const ordered = [...artists].sort(
     (x, y) => key(x) - key(y) || compareByPopularity(listeners)(x, y),
   )

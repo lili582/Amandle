@@ -8,12 +8,12 @@ import { normalizeRanks, ranksAreDense } from './rank'
 import { breakthroughOf } from './age'
 import { hasAllDetails } from './complete'
 import { applyGenreOverride } from './genreOverrides'
-import { curatedArtist, curatedFor } from './curatedArtists'
+import { curatedArtist, curatedFor, EXCLUDED_QIDS } from './curatedArtists'
 
 // The pool is the top POOL_SIZE Israeli artists on Spotify by monthly
-// listeners. A nightly GitHub Action (scripts/build-pool.ts) reads Wikidata
-// and Spotify, and deploys the result as data/pool.json next to the app; it
-// is generated on every deploy and never committed. When that file is missing
+// listeners. A GitHub Action every two weeks (update-pool.yml running
+// scripts/build-pool.ts) reads Wikidata and Spotify, and deploys the result
+// to Vercel as data/pool.json next to the app; it is never committed. When that file is missing
 // (local dev without `npm run build:pool`), the game falls back to the live
 // Wikidata query ranked by Hebrew Wikipedia page views (wikidata.ts,
 // popularity.ts). Either way the result is cached in IndexedDB for the day.
@@ -84,7 +84,10 @@ export interface LoadResult {
   source: DataSource
 }
 
-const cacheKey = `dataset:${DATA_SCHEMA_VERSION}`
+// Keyed by the build too: each deploy (new artists, fixed data) replaces the
+// day's cached pool at once. Within one deploy the pool stays pinned for the day.
+const BUILD_ID: string = import.meta.env.VITE_BUILD_ID ?? 'dev'
+const cacheKey = `dataset:${DATA_SCHEMA_VERSION}:${BUILD_ID}`
 
 // Session copy, so switching tabs/views never re-reads storage.
 let memoryData: GameData | null = null
@@ -205,9 +208,9 @@ async function doLoad(opts: LoadGameDataOptions): Promise<LoadResult> {
       if (signal?.aborted) throw err
     }
     // Keep the POOL_SIZE most viewed (or, if page views failed, the provisional
-    // sitelink order), one artist per rank 1..N. Daily answers = top
-    // ANSWER_POOL_SIZE: the artists Israelis read about most.
-    const pool = normalizeRanks(artists.filter(hasAllDetails))
+    // sitelink order), one artist per rank 1..N. Any of them can be
+    // the daily answer (ANSWER_POOL_SIZE = POOL_SIZE).
+    const pool = normalizeRanks(artists.filter((a) => hasAllDetails(a) && !EXCLUDED_QIDS.has(a.id)))
     const data = validateGameData({ artists: pool, schedule: scheduleFor(pool) })
     if (!data) throw new Error('Wikidata dataset failed validation')
     await idbWrite(cacheKey, now, data)

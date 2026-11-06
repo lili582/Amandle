@@ -18,7 +18,6 @@ export const strings = {
   copied: 'הועתק ללוח!',
   nextIn: 'המשחק הבא בעוד {time}',
   guessesUsed: '{n}/10',
-  numberOfDay: 'משחק מספר {n}',
   statsTitle: 'סטטיסטיקה',
   close: 'סגירה',
   newGameDisabled: 'המשחק נגמר להיום, חוזרים מחר!',
@@ -75,7 +74,7 @@ export const strings = {
   helpAttributes: [
     { title: 'שנת פריצה', body: 'השנה שבה יצא השיר הגדול הראשון של האמן: המוקדם מבין השירים הכי מושמעים שלו.', close: 'עד 7 שנים' },
     { title: 'חברים', body: 'מספר החברים בהרכב (סולו לאמן יחיד).', close: null },
-    { title: 'פופולריות', body: 'דירוג 1 עד 1000 לפי מאזינים חודשיים בספוטיפיי בישראל. לכל אמן דירוג משלו, ו-#1 הוא המושמע ביותר בארץ.', close: 'עד 5% מהרשימה' },
+    { title: 'פופולריות', body: 'דירוג 1 עד 350 לפי מאזינים חודשיים בספוטיפיי בישראל. לכל אמן דירוג משלו, ו-#1 הוא המושמע ביותר בארץ.', close: 'עד 5% מהרשימה' },
     { title: 'מגדר', body: 'גבר, אישה, או מעורב להרכב עם גברים ונשים.', close: null },
     { title: 'ז׳אנר', body: 'הז׳אנר הראשי של האמן.', close: null },
     { title: 'גיל', body: 'גיל האמן (גיל הפטירה אם נפטר). להרכב: כמה שנים עברו מאז שהוקם.', close: 'עד 7 שנים' },
@@ -108,7 +107,7 @@ export const strings = {
   revealPictureAlt: 'תמונה של {name}',
   revealNoPicture: 'אין תמונה זמינה',
   // Restored: these keys are used by Game.tsx / EndModal.tsx / GuessBoard.tsx.
-  gameInfo: '{max} ניסיונות לנחש את האמן היומי מתוך {n} אמנים ישראלים',
+  gameInfo: '{max} ניסיונות לנחש את האמן היומי',
   btnYesterday: 'המשחק של אתמול',
   backToToday: 'חזרה למשחק של היום',
   retroBanner: 'משחקים במשחק של אתמול',

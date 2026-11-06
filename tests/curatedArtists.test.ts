@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { CURATED_ARTISTS, curatedArtist, curatedFor, DEEZER_IDS } from '../src/lib/curatedArtists'
+import { CURATED_ARTISTS, curatedArtist, curatedFor, DEEZER_IDS, EXCLUDED_QIDS } from '../src/lib/curatedArtists'
 import { isComplete } from '../src/lib/complete'
 import { GENRE_RULES } from '../src/lib/genreRules'
 import { applyEnrichment, fetchEnrichment } from '../src/lib/enrich'
@@ -36,6 +36,11 @@ describe('curated artists', () => {
   it('includes the artists players reported missing', () => {
     expect(curatedFor('Q5348891')?.nameHe).toBe('איפה הילד')
     expect(curatedFor('Q60951018')?.nameHe).toBe('מיכאל סוויסה')
+  })
+
+  it('never curates an excluded artist', () => {
+    for (const c of CURATED_ARTISTS) expect(EXCLUDED_QIDS.has(c.qid), c.nameHe).toBe(false)
+    expect(EXCLUDED_QIDS.has('Q116692489')).toBe(true) // מאי ספדיה
   })
 
   it('keeps the curated tiles over Wikidata values', () => {
