@@ -11,8 +11,10 @@ import { useGame } from '../../src/game/useGame'
 import { Game } from '../../src/ui/Game'
 import { strings } from '../../src/text/strings.he'
 import { loadStats, saveStats, emptyStats, loadGame } from '../../src/storage/storage'
-import { answerForDay, dayNumberFor, israelDateString, yesterdayIsraelDateString } from '../../src/game/daily'
+import { dayNumberFor, israelDateString, yesterdayIsraelDateString } from '../../src/game/daily'
 import type { GameMode } from '../../src/game/useGame'
+import type { CheckGuess } from '../../src/game/guessApi'
+import { answerIdFor, scoreGuess, type SeedConfig } from '../../server/answers'
 
 function artist(id: string, nameHe: string): Artist {
   return makeArtist({ id, nameHe })
@@ -20,15 +22,33 @@ function artist(id: string, nameHe: string): Artist {
 
 const ART_A = artist('a', 'אמן א')
 const ART_B = artist('b', 'אמן ב')
+const ARTISTS = [ART_A, ART_B]
 
 function makeData(): GameData {
-  return { artists: [ART_A, ART_B], schedule: ['a', 'b'] }
+  return { artists: ARTISTS }
 }
 
-// The target depends on today's schedule index; derive it the same way useGame
-// does so these tests pass on any calendar day.
-const targetIdOf = (data: GameData) =>
-  answerForDay(data.schedule, dayNumberFor(israelDateString(new Date())))
+// The server, in process: the real scoring rules with a test seed, standing in
+// for POST /api/guess.
+const SEEDS: SeedConfig = { secret: 'test-seed', from: '2000-01-01' }
+const BY_ID = new Map(ARTISTS.map((a) => [a.id, a]))
+const serverCheck: CheckGuess = async (req) => {
+  const r = scoreGuess({ artists: ARTISTS, byId: BY_ID, seeds: SEEDS, ...req, now: Date.now() })
+  if (!r.ok) throw new Error(r.error)
+  return r.body
+}
+const api = vi.hoisted(() => ({ calls: 0 }))
+vi.mock('../../src/game/guessApi', async (orig) => ({
+  ...(await orig<typeof import('../../src/game/guessApi')>()),
+  checkGuess: (...args: Parameters<CheckGuess>) => {
+    api.calls++
+    return serverCheck(...args)
+  },
+}))
+
+// The target depends on the day; ask the in-process server so these tests
+// pass on any calendar day.
+const targetIdOf = (_data?: GameData, date = israelDateString(new Date())) => answerIdFor(ARTISTS, date, SEEDS)!
 
 function Harness({ data, mode }: { data: GameData; mode?: GameMode }) {
   const g = useGame(data, mode)
@@ -164,13 +184,15 @@ expect(loadStats().played).toBe(1)
     const data = makeData()
     const today = israelDateString(new Date())
     const yesterday = yesterdayIsraelDateString(today)
-    const yTarget = answerForDay(data.schedule, dayNumberFor(today) - 1)
+    const yTarget = targetIdOf(data, yesterday)
 
     const { container, root } = setup()
     act(() => root.render(<Harness data={data} mode="yesterday" />))
-    expect(container.querySelector('[data-target]')?.getAttribute('data-target')).toBe(yTarget)
+    // The answer is not known until the round ends.
+    expect(container.querySelector('[data-target]')?.getAttribute('data-target')).toBe('')
     await click(container, `guess-${yTarget}`)
     expect(container.querySelector('[data-status]')?.getAttribute('data-status')).toBe('won')
+    expect(container.querySelector('[data-target]')?.getAttribute('data-target')).toBe(yTarget)
     expect(loadGame(yesterday)?.status).toBe('won')
     expect(loadGame(today)).toBeNull()
     expect(loadStats().played).toBe(0)
@@ -203,6 +225,65 @@ expect(loadStats().played).toBe(1)
     const back = container.querySelector<HTMLButtonElement>('.retro-banner .link-btn')
     act(() => back?.click())
     expect(container.querySelector('.retro-banner')).toBeNull()
+    tearDown(root, container)
+  })
+
+  it('does not know the answer while playing, and learns it on a win', async () => {
+    const { container, root } = setup()
+    act(() => root.render(<Harness data={makeData()} />))
+    const targetId = targetIdOf()
+    const wrongId = targetId === 'a' ? 'b' : 'a'
+    await click(container, `guess-${wrongId}`)
+    expect(container.querySelector('[data-target]')?.getAttribute('data-target')).toBe('')
+    await click(container, `guess-${targetId}`)
+    expect(container.querySelector('[data-target]')?.getAttribute('data-target')).toBe(targetId)
+    expect(loadGame(israelDateString(new Date()))?.answerId).toBe(targetId)
+    tearDown(root, container)
+  })
+
+  it('shows a notice and keeps the board when the server cannot be reached', async () => {
+    const failing: CheckGuess = () => Promise.reject(new Error('offline'))
+    function Failing() {
+      const g = useGame(makeData(), 'daily', failing)
+      return (
+        <div>
+          <span data-count={String(g.guesses.length)} />
+          <span data-notice={g.notice ?? ''} />
+          <span data-pending={String(g.pending)} />
+          <button data-testid="guess-a" onClick={() => g.submitGuess(ART_A)} />
+        </div>
+      )
+    }
+    const { container, root } = setup()
+    act(() => root.render(<Failing />))
+    await click(container, 'guess-a')
+    expect(container.querySelector('[data-count]')?.getAttribute('data-count')).toBe('0')
+    expect(container.querySelector('[data-notice]')?.getAttribute('data-notice')).toBe('guessFailed')
+    expect(container.querySelector('[data-pending]')?.getAttribute('data-pending')).toBe('false')
+    tearDown(root, container)
+  })
+
+  it('a lost board saved before 0.11.0 gets no answer unless it really used every guess', async () => {
+    const today = israelDateString(new Date())
+    const targetId = targetIdOf()
+    const wrongId = targetId === 'a' ? 'b' : 'a'
+    // An old lost board: no answerId stored.
+    window.localStorage.clear()
+    const { saveGame } = await import('../../src/storage/storage')
+    saveGame(today, {
+      date: today,
+      status: 'lost',
+      guesses: [{ artistId: wrongId, tiles: (await serverCheck({ date: today, guess: wrongId, previous: [] })).tiles }],
+    })
+    const { container, root } = setup()
+    await act(async () => {
+      root.render(<Harness data={makeData()} />)
+      await new Promise((r) => setTimeout(r, 0))
+    })
+    // One wrong guess is not a finished round for the server, so it keeps the
+    // answer to itself; the board stays lost without a reveal.
+    expect(container.querySelector('[data-status]')?.getAttribute('data-status')).toBe('lost')
+    expect(container.querySelector('[data-target]')?.getAttribute('data-target')).toBe('')
     tearDown(root, container)
   })
 })

@@ -31,14 +31,56 @@ npm run dev          # dev server; ?day=N previews any date (DEV builds only)
 npm test             # vitest (headless)
 npm run lint         # oxlint
 npm run typecheck    # tsc -b
-npm run build        # tsc -b && vite build -> dist/
-npm run preview      # serve dist/ locally
+npm run build        # tsc -b && vite build -> dist/, then pack .vercel/output (site + /api/guess)
+npm run preview      # serve the build locally, /api/guess included
 npm run build:pool   # rebuild public/data/pool.json (slow: reads Spotify)
 npm run fill:pool    # fill gaps in the existing pool.json, no Spotify
 npm run check:pool   # compare a new pool.json with the live one
 ```
 
-On Windows, `start-game.bat` runs the dev server and opens the game.
+On Windows, `start-game.bat` runs the dev server and opens the game. The dev
+and preview servers answer `/api/guess` themselves (`vite.config.ts`), so they
+play exactly like the live site.
+
+## The daily answer lives on the server (`/api/guess`)
+
+The browser never knows the day's answer while a round is running. It sends
+each guess to `POST /api/guess` and gets back only the tiles (colours, arrows,
+values). The answer comes back only when the round ends: on a win, or with the
+last allowed guess.
+
+```
+POST /api/guess  {"date":"2026-11-20","guess":"Q123","previous":["Q7","Q9"]}
+200  {"tiles":[...6 tiles...],"correct":false}            // round goes on
+200  {"tiles":[...],"correct":true,"answerId":"Q123"}     // win
+200  {"tiles":[...],"correct":false,"answerId":"Q456"}    // 10th guess
+4xx/503 {"error":"badRequest"|"unknownArtist"|"futureDate"|"unavailable"}
+```
+
+- `server/answers.ts` picks the answer (rendezvous hashing over the pool with a
+  **secret seed**) and scores a guess (`src/game/compare.ts`). Days that have
+  not started in Israel are refused, so tomorrow's answer can't be fished out.
+- `server/pool.ts` prepares the pool with the same rules as the browser
+  (`src/data/preparePool.ts`), from the `pool.json` of the same deploy.
+- `scripts/build-vercel-output.ts` (last step of `npm run build`) bundles the
+  function into `.vercel/output` (Vercel's Build Output API) next to the static
+  site, so `vercel --prod` and the two-week update deploy both at once.
+
+**The seed.** Set it once in Vercel (Project → Settings → Environment
+Variables, Production), then redeploy:
+
+| Variable | Value |
+|----------|-------|
+| `AMANDLE_SEED` | a long random string, e.g. from `node -e "console.log(crypto.randomUUID())"`. Never commit it and never change it (that would change every future answer). |
+| `AMANDLE_SEED_FROM` | optional, `YYYY-MM-DD`: the first day that uses the secret seed (default `2026-11-12`). Days before it keep the answers they always had. |
+
+Without `AMANDLE_SEED` the game still works, but answers use the old public
+seed, which anyone can read in this repo. Locally the seed is optional
+(`.env.local`).
+
+What the server cannot stop: someone can call the API with ten made-up
+guesses to see that day's answer early. That spoils only their own game, the
+same as in Spotle.
 
 ## The artist pool: `public/data/pool.json`
 
@@ -124,10 +166,14 @@ folder import each other directly.
 | `text/` | Every Hebrew text: UI strings, legal pages. | `config` |
 | `storage/` | What's saved in the player's browser: board, stats, settings (localStorage), cached pool (IndexedDB), "delete my data". | `config` |
 | `sources/` | Outside websites, one file each: Wikidata, Hebrew Wikipedia, Spotify, MusicBrainz + Deezer. | `artist`, `storage` |
-| `game/` | The rules of a round: daily answer, tiles (`compare.ts`), complete artists, search, share, stats, and the `useGame` hook. | `artist`, `text`, `storage`, `sources` |
+| `game/` | The rules of a round: daily answer, tiles (`compare.ts`), complete artists, search, share, stats, the `/api/guess` client and the `useGame` hook. | `artist`, `text`, `storage`, `sources` |
 | `pool/` | Build time only: fill gaps, safety-check a new `pool.json`. | `artist`, `game`, `sources` |
 | `data/` | Play time: load the pool into the browser (pool.json → day cache → Wikidata fallback). | `artist`, `game`, `sources`, `storage` |
 | `ui/` | React screens and dialogs. | `game`, `data`, `storage`, `text`, `artist` |
+
+`server/` (outside `src/`) is the `/api/guess` function; it uses `artist`,
+`game` (`daily.ts`, `compare.ts`), `data/preparePool.ts` and `sources` (the
+Wikidata fallback), never `ui/`.
 
 Arrows only point down the table, so there are no loops: `ui/` sits on top,
 `artist/` and `text/` at the bottom. `App.tsx` loads the data (`data/`) and
@@ -151,9 +197,11 @@ a deploy replaces it at once); per-artist enrichment is cached for 7 days.
 Age is the artist's age (age at death for a deceased artist, shown as "ז״ל");
 for a group, years since it was formed (`src/artist/age.ts`).
 
-The daily answer uses rendezvous hashing over the pool (`rendezvousSchedule` in
-`src/game/daily.ts`), so a pool update only changes the days a joining or
-leaving artist would have won, and an answer never repeats within 60 days.
+The daily answer is picked on the server (see above) by rendezvous hashing over
+the pool (`rendezvousSchedule` in `src/game/daily.ts`), so a pool update only
+changes the days a joining or leaving artist would have won, and an answer
+never repeats within 60 days. Tile values come from `pool.json` only, the same
+for every player; MusicBrainz / Deezer only add pictures and songs.
 
 `localStorage` (namespace `amandle:v1`) holds today's game, settings and stats.
 Every access is wrapped so the game works with storage blocked, just without
@@ -171,6 +219,7 @@ CI (`.github/workflows/ci.yml`) runs lint, typecheck and tests on every push and
 - [ ] Set `GAME_URL`, `REPORT_EMAIL` and `OWNER_NAME` in `src/config.ts` (the
   legal pages show them as the site operator and accessibility contact).
 - [ ] Add the three Vercel secrets so the automatic update can deploy.
+- [ ] Set `AMANDLE_SEED` in Vercel (see "The daily answer lives on the server").
 
 ## Legal pages
 

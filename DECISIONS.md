@@ -913,3 +913,61 @@ pool stays, and `build-and-deploy.bat` on Lili's PC still works.
 `deploy-vercel.bat`, the one-off `push-fix.*` scripts and old logs.
 `start-log.txt` is rewritten by `start-game.bat` on every run, so it is now
 gitignored.
+
+## 0.11.0 — The answer moves to the server (2026-11-11)
+
+**Problem.** The browser worked out the daily answer itself (seeded hashing in
+`daily.ts`, with the seed in the bundle) and even fetched the answer's
+MusicBrainz/Deezer details up front, so the answer could be read in DevTools
+(Network tab or the code) in seconds.
+
+**Choice (Lili's).** A Vercel function, `POST /api/guess`: the browser sends a
+guess and gets back only the tiles; the answer is revealed only on a win or
+with the last guess. Considered and not chosen: hiding the answer in the
+browser (obfuscation), which stops the curious but not anyone reading the code.
+
+**How.**
+- The seed is a Vercel environment variable (`AMANDLE_SEED`). The old seed is
+  public (old bundles, this repo), so days before `AMANDLE_SEED_FROM` (default
+  2026-11-12) keep it: no past day's answer changes for saved boards or
+  "yesterday" mode.
+- The server prepares the pool from the same deploy's `pool.json` with the same
+  rules as the browser (`src/data/preparePool.ts`, moved out of
+  `dataLoader.ts`), so both agree on every artist and rank. Without pool.json
+  it falls back to the live Wikidata pool, like the browser.
+- Tiles now come from pool.json only. Before, the browser re-read MusicBrainz
+  for both artists before comparing, which could change the year tiles from
+  player to player; the years are baked into the pool at build time anyway.
+  Guessing is faster too (no 12-second wait for MusicBrainz).
+- Packaging: `@vercel/node` compiles `api/*.ts` file by file, and this
+  project's extensionless ESM imports would not resolve at run time. So
+  `npm run build` bundles the function with esbuild into `.vercel/output`
+  (Build Output API) together with the static site. Deploying stays the same:
+  `vercel --prod` / the two-week workflow.
+- The server is stateless, so it cannot know a player really lost: ten made-up
+  guesses reveal the answer. That only spoils the caller's own game.
+- Retro ("yesterday") mode asks for yesterday's date; tomorrow is refused
+  (5 minutes of slack for fast clocks at midnight).
+- The leftover GitHub Pages workflow (`deploy.yml`, listed as removed above but
+  still in the repo) is deleted: a static-only copy would now fail every guess.
+
+## 0.11.1 — בן זיני and גזוז in place of פטריק סבג and אברהם פריד (2026-11-11)
+
+Lili's request. Both newcomers are hand-checked entries in `curatedArtists.ts`
+(Hebrew Wikipedia + Wikidata), so every build keeps them whatever their
+listener numbers; the two removed ones are in `EXCLUDED_QIDS`.
+- בן זיני (Q62422515): solo, male, born 1996, first single 2017. Wikipedia
+  files him under rock, but his songs are mainstream pop, so the tile says
+  pop. Spotify profile `5y4NLV7Zuivr7A7qJV5Obt` (his own, not the duo with
+  טיילור מלכוב). About 12K monthly listeners: far below the listener floor,
+  curated artists skip it.
+- גזוז (Q12404891): Danny Sanderson's band, formed 1978, 9 members (one
+  woman, מזי כהן, so "mixed"), rock, both albums 1979.
+- `preparePrebuiltPool` now also drops `EXCLUDED_QIDS`, so a removal takes
+  effect on the next deploy without rebuilding the pool. Taking two artists
+  out of the pool changes only the days one of them would have been the
+  answer (rendezvous hashing).
+- The live `pool.json` (not in git) was edited by hand to swap them in at
+  their Spotify listener rank (גזוז #129, בן זיני #344), so they are in the
+  game from the next deploy; the next two-week build ranks them for real.
+

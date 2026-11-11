@@ -2,6 +2,39 @@
 
 All notable changes to Amandle. Versions follow [SemVer](https://semver.org/).
 
+## [0.11.1] - 2026-11-11
+
+### Changed
+- בן זיני and גזוז join the pool, in place of פטריק סבג and אברהם פריד
+  (hand-checked in `curatedArtists.ts`; the two removed are in
+  `EXCLUDED_QIDS`).
+- Removed artists now leave an already-deployed `pool.json` at once (browser
+  and `/api/guess` alike), instead of at the next pool build.
+
+## [0.11.0] - 2026-11-11
+
+### Changed
+- The daily answer is decided on the server. Each guess goes to
+  `POST /api/guess` (a Vercel function), which answers with the tiles only;
+  the answer is sent when the round ends (win or last guess). The browser no
+  longer has the answer schedule, the seed, or the answer's details while
+  playing, so it can't be read in DevTools.
+- The answer uses a secret seed (`AMANDLE_SEED`, set in Vercel) from
+  `AMANDLE_SEED_FROM` (default 2026-11-12); earlier days keep their answers.
+- Tiles come from `pool.json` only (no MusicBrainz re-check before comparing),
+  so every player sees the same values and guesses answer faster.
+- `npm run build` also packs `.vercel/output` (static site + function);
+  `npm run dev` and `npm run preview` serve `/api/guess` locally.
+- The cached pool in the browser is reset once (`DATA_SCHEMA_VERSION` v14).
+
+### Added
+- A message when a guess can't be checked (no connection):
+  "לא הצלחנו לבדוק את הניחוש".
+
+### Removed
+- `.github/workflows/deploy.yml` (GitHub Pages): a static copy can't check
+  guesses.
+
 ## [0.10.2] - 2026-11-06
 
 ### Changed

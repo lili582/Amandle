@@ -24,7 +24,7 @@ export const DATA_CACHE_TTL_MS = 24 * 60 * 60 * 1000
 
 // Bump together with a breaking shape change of the cached dataset. The old
 // value is keyed into IndexedDB, so bumping it discards stale caches.
-export const DATA_SCHEMA_VERSION = 'v13'
+export const DATA_SCHEMA_VERSION = 'v14' // v14: no answer schedule in the browser
 
 
 // The pool: the Hebrew-singing Israeli artists with the most Spotify monthly

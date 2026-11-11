@@ -192,6 +192,10 @@ export const CURATED_ARTISTS: readonly CuratedArtist[] = [
   { qid: 'Q12405841', nameHe: 'דן תורן', nameEn: 'Dan Toren', spotify: '285uARLcuYJ5SqmbGnJuRl', type: 'solo', members: 1, gender: 'male', genre: 'rock', debut: 1979, breakthrough: 1979, born: 1960, died: 2024 },
   { qid: 'Q125634912', nameHe: 'השמחות', nameEn: 'Hasmachot', spotify: '7lwWNLsfAlgQBtHFFZdXjP', type: 'band', members: 6, gender: 'male', genre: 'rock', debut: 1996, breakthrough: 1998, born: 1996 },
   { qid: 'Q61126341', nameHe: 'האחים צברי', nameEn: 'The Zabari Brothers', spotify: '0ZGlz6T4yzJWtwYISiglZ0', type: 'band', members: 2, gender: 'male', genre: 'rock', debut: 2013, breakthrough: 2013, born: 2013 },
+  // Nov 11: asked for by the owner, in place of פטריק סבג and אברהם פריד
+  // (see EXCLUDED_QIDS). Checked against Hebrew Wikipedia and Wikidata.
+  { qid: 'Q62422515', nameHe: 'בן זיני', nameEn: 'Ben Zini', spotify: '5y4NLV7Zuivr7A7qJV5Obt', type: 'solo', members: 1, gender: 'male', genre: 'pop', debut: 2017, breakthrough: 2017, born: 1996 },
+  { qid: 'Q12404891', nameHe: 'גזוז', nameEn: 'Gazoz', spotify: '35D8tJ4FAP4O0dUtCHGjCY', type: 'band', members: 9, gender: 'mixed', genre: 'rock', debut: 1979, breakthrough: 1979, born: 1978, aliases: ['להקת גזוז'] },
 ]
 
 const byQid = new Map(CURATED_ARTISTS.map((c) => [c.qid, c]))
@@ -237,11 +241,14 @@ export const DEEZER_IDS: Readonly<Record<string, number>> = {
 }
 
 // Artists Lili removed from the game. The nightly build drops them even if
-// Wikidata/Spotify would otherwise rank them into the pool.
+// Wikidata/Spotify would otherwise rank them into the pool, and the game drops
+// them from an already-deployed pool.json too (data/preparePool.ts).
 export const EXCLUDED_QIDS: ReadonlySet<string> = new Set([
   'Q113903728', // נמואל
   'Q12407566', // חנן יובל
   'Q42306376', // מוטי שטיינמץ
   'Q6950519', // חיים ישראל
   'Q116692489', // מאי ספדיה
+  'Q6981527', // פטריק סבג (replaced by בן זיני)
+  'Q2778189', // אברהם פריד (replaced by גזוז)
 ])

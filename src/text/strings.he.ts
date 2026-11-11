@@ -9,6 +9,7 @@ export const strings = {
   placeholder: 'הקלידו שם של אמן או להקה...',
   submit: 'נחשו',
   alreadyGuessed: 'כבר ניחשתם את האמן הזה',
+  guessFailed: 'לא הצלחנו לבדוק את הניחוש. בדקו את החיבור ונסו שוב',
   notFound: 'לא מצאנו אמן בשם הזה',
   win: 'כל הכבוד! זה {name}',
   lose: 'לא הפעם. האמן היה {name}',
