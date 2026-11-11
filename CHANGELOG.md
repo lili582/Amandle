@@ -2,6 +2,15 @@
 
 All notable changes to Amandle. Versions follow [SemVer](https://semver.org/).
 
+## [0.11.1] - 2026-11-11
+
+### Changed
+- בן זיני and גזוז join the pool, in place of פטריק סבג and אברהם פריד
+  (hand-checked in `curatedArtists.ts`; the two removed are in
+  `EXCLUDED_QIDS`).
+- Removed artists now leave an already-deployed `pool.json` at once (browser
+  and `/api/guess` alike), instead of at the next pool build.
+
 ## [0.11.0] - 2026-11-11
 
 ### Changed

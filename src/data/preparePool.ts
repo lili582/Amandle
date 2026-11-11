@@ -16,6 +16,8 @@ import {
 // (server/pool.ts, which checks guesses against the secret answer).
 
 // pool.json -> the pool, or null when the file is not a usable Spotify pool.
+//   * artists Lili removed (EXCLUDED_QIDS) are dropped at once, without
+//     waiting for the next pool build,
 //   * hand-checked artists (curatedArtists.ts) keep their curated tiles and
 //     are never cut by the listener floor,
 //   * only artists with every tile known,
@@ -27,6 +29,7 @@ export function preparePrebuiltPool(json: unknown): Artist[] | null {
   const pool = json as Partial<PrebuiltPool> | null
   if (pool?.source !== 'spotify' || !Array.isArray(pool.artists) || pool.artists.length === 0) return null
   const complete = pool.artists
+    .filter((a) => !EXCLUDED_QIDS.has(a.id))
     .map(applyCurated)
     .filter(
       (a) =>
