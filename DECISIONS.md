@@ -951,3 +951,23 @@ browser (obfuscation), which stops the curious but not anyone reading the code.
 - The leftover GitHub Pages workflow (`deploy.yml`, listed as removed above but
   still in the repo) is deleted: a static-only copy would now fail every guess.
 
+## 0.11.1 — בן זיני and גזוז in place of פטריק סבג and אברהם פריד (2026-11-11)
+
+Lili's request. Both newcomers are hand-checked entries in `curatedArtists.ts`
+(Hebrew Wikipedia + Wikidata), so every build keeps them whatever their
+listener numbers; the two removed ones are in `EXCLUDED_QIDS`.
+- בן זיני (Q62422515): solo, male, born 1996, first single 2017. Wikipedia
+  files him under rock, but his songs are mainstream pop, so the tile says
+  pop. Spotify profile `5y4NLV7Zuivr7A7qJV5Obt` (his own, not the duo with
+  טיילור מלכוב). About 12K monthly listeners: far below the listener floor,
+  curated artists skip it.
+- גזוז (Q12404891): Danny Sanderson's band, formed 1978, 9 members (one
+  woman, מזי כהן, so "mixed"), rock, both albums 1979.
+- `preparePrebuiltPool` now also drops `EXCLUDED_QIDS`, so a removal takes
+  effect on the next deploy without rebuilding the pool. Taking two artists
+  out of the pool changes only the days one of them would have been the
+  answer (rendezvous hashing).
+- The live `pool.json` (not in git) was edited by hand to swap them in at
+  their Spotify listener rank (גזוז #129, בן זיני #344), so they are in the
+  game from the next deploy; the next two-week build ranks them for real.
+
