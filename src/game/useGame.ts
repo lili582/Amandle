@@ -3,8 +3,8 @@ import type { Artist } from '../artist'
 import type { GameStatus, GuessRecord, Match, SaveState, GameData } from './types'
 import { TILE_FIELDS } from './types'
 import { MAX_GUESSES } from '../config'
-import { answerForDay, dayNumberFor, israelDateString, yesterdayIsraelDateString } from './daily'
-import { compareArtist } from './compare'
+import { dateForDayNumber, dayNumberFor, israelDateString, yesterdayIsraelDateString } from './daily'
+import { checkGuess as defaultCheckGuess, type CheckGuess } from './guessApi'
 import { enrichArtist } from '../sources'
 import {
   loadGame,
@@ -33,7 +33,8 @@ function parseSaved(raw: SaveState | null, date: string): SaveState {
         g.tiles.every((t, i) => t.field === TILE_FIELDS[i]),
     )
   ) {
-    return { guesses: raw.guesses, status: raw.status, date }
+    const answerId = typeof raw.answerId === 'string' ? raw.answerId : undefined
+    return { guesses: raw.guesses, status: raw.status, date, ...(answerId ? { answerId } : {}) }
   }
   return { guesses: [], status: 'playing', date }
 }
@@ -43,7 +44,7 @@ function parseSaved(raw: SaveState | null, date: string): SaveState {
 // Only a present, non-empty digit sequence counts — otherwise fall back to the
 // real calendar date (Number(null) is 0, which would pin every dev session to
 // the same day-0 artist).
-function resolveDayNumber(today: string, isDev: boolean): number {
+function devDayOverride(isDev: boolean): number | null {
   if (isDev) {
     try {
       const raw = new URLSearchParams(window.location.search).get('day')
@@ -54,7 +55,15 @@ function resolveDayNumber(today: string, isDev: boolean): number {
       // ignore malformed / blocked window access
     }
   }
-  return dayNumberFor(today)
+  return null
+}
+
+// The answer once the round is over: the one the server revealed, or (for a
+// won board saved before 0.11.0) the last guess, which was the right one.
+function answerIdOf(game: SaveState): string | undefined {
+  if (game.answerId) return game.answerId
+  if (game.status === 'won') return game.guesses[game.guesses.length - 1]?.artistId
+  return undefined
 }
 
 // 'daily' is today's puzzle. 'yesterday' is the retro mode: replay only the
@@ -80,30 +89,53 @@ export interface UseGame {
   clearNotice: () => void
 }
 
-export function useGame(data: GameData, mode: GameMode = 'daily'): UseGame {
+// `check` scores a guess; the default asks the server (POST /api/guess).
+// Tests pass their own.
+export function useGame(data: GameData, mode: GameMode = 'daily', check: CheckGuess = defaultCheckGuess): UseGame {
   const artistsById = useMemo(() => new Map(data.artists.map((a) => [a.id, a])), [data])
   const [today, setToday] = useState<string>(() => israelDateString(new Date()))
   const isDev = (import.meta as { env?: { DEV?: boolean } }).env?.DEV === true
   const retro = mode === 'yesterday'
   // The date whose board is played and saved: today, or yesterday in retro mode.
   const playDate = retro ? yesterdayIsraelDateString(today) : today
-  const dayNumber = useMemo(
-    () => resolveDayNumber(today, isDev) - (retro ? 1 : 0),
-    [today, isDev, retro],
-  )
-  const targetId = answerForDay(data.schedule, dayNumber)
-  const target = artistsById.get(targetId) ?? null
+  const devDay = devDayOverride(isDev)
+  const dayNumber = (devDay ?? dayNumberFor(today)) - (retro ? 1 : 0)
+  // The day the server scores guesses against. Normally the board's date; the
+  // dev-only ?day=N preview asks for that day instead.
+  const apiDate = devDay != null ? dateForDayNumber(dayNumber) : playDate
 
   const [game, setGame] = useState<SaveState>(() => parseSaved(loadGame(playDate), playDate))
   const [notice, setNotice] = useState<string | null>(null)
   const [pending, setPending] = useState(false)
   const [, bump] = useState(0)
 
-  // Fetch the answer's MusicBrainz/Deezer details up front, so the first
-  // guess only waits for the guessed artist.
+  const answerId = answerIdOf(game)
+  const target = (answerId && artistsById.get(answerId)) || null
+
+  // Once the answer is known, fetch its picture and top track for the end
+  // dialog (MusicBrainz/Deezer).
   useEffect(() => {
     if (target) void enrichArtist(target).then(() => bump((n) => n + 1))
   }, [target])
+
+  // A lost board saved before 0.11.0 has no answer stored: ask the server for
+  // it by replaying the board's last guess (it is the last allowed one, so the
+  // server reveals the answer).
+  const revealAsked = useRef<string | null>(null)
+  useEffect(() => {
+    if (game.status !== 'lost' || answerId || game.date !== playDate) return
+    if (revealAsked.current === playDate || game.guesses.length === 0) return
+    revealAsked.current = playDate
+    const ids = game.guesses.map((g) => g.artistId)
+    check({ date: apiDate, guess: ids[ids.length - 1], previous: ids.slice(0, -1) })
+      .then((r) => {
+        if (!r.answerId) return
+        setGame((prev) => (prev.date === playDate && prev.status === 'lost' ? { ...prev, answerId: r.answerId } : prev))
+      })
+      .catch(() => {
+        // The end dialog just stays closed; the board itself is complete.
+      })
+  }, [game, answerId, playDate, apiDate, check])
   // Retro games never count: treat their stats as already recorded.
   const statsDoneRef = useRef(retro || statsRecorded(playDate))
 
@@ -155,33 +187,33 @@ export function useGame(data: GameData, mode: GameMode = 'daily'): UseGame {
     markStatsRecorded(playDate)
   }, [retro, game.status, game.guesses.length, game.date, playDate])
 
-const submitGuess = useCallback(
+  const submitGuess = useCallback(
     (artist: Artist) => {
-      if (game.status !== 'playing' || !target || pending) return
+      if (game.status !== 'playing' || pending) return
       if (game.guesses.some((g) => g.artistId === artist.id)) {
         setNotice('alreadyGuessed')
         return
       }
       setNotice(null)
       setPending(true)
-      // Enrich both sides from the live APIs before comparing, with a cap so a
-      // slow API never blocks the game: after 12s we compare what we have.
-      const ready = Promise.all([enrichArtist(artist), enrichArtist(target)])
-      const cap = new Promise((r) => setTimeout(r, 12_000))
-      void Promise.race([ready, cap]).then(() => {
-        setPending(false)
-        setGame((prev) => {
-          if (prev.status !== 'playing' || prev.date !== playDate) return prev
-          if (prev.guesses.some((g) => g.artistId === artist.id)) return prev
-          const tiles = compareArtist(artist, target, data.artists.length)
-          const won = artist.id === target.id
-          const guesses: GuessRecord[] = [...prev.guesses, { artistId: artist.id, tiles }]
-          const status: GameStatus = won ? 'won' : guesses.length >= MAX_GUESSES ? 'lost' : 'playing'
-          return { guesses, status, date: playDate }
+      // The guessed artist's picture for its row; the tiles come from the server.
+      void enrichArtist(artist).then(() => bump((n) => n + 1))
+      const previous = game.guesses.map((g) => g.artistId)
+      check({ date: apiDate, guess: artist.id, previous })
+        .then((r) => {
+          setGame((prev) => {
+            if (prev.status !== 'playing' || prev.date !== playDate) return prev
+            if (prev.guesses.some((g) => g.artistId === artist.id)) return prev
+            const guesses: GuessRecord[] = [...prev.guesses, { artistId: artist.id, tiles: r.tiles }]
+            const status: GameStatus = r.correct ? 'won' : guesses.length >= MAX_GUESSES ? 'lost' : 'playing'
+            const answer = r.correct ? artist.id : r.answerId
+            return { guesses, status, date: playDate, ...(answer ? { answerId: answer } : {}) }
+          })
         })
-      })
+        .catch(() => setNotice('guessFailed'))
+        .finally(() => setPending(false))
     },
-    [game, target, playDate, pending, data.artists.length],
+    [game, playDate, apiDate, pending, check],
   )
 
   const clearNotice = useCallback(() => setNotice(null), [])

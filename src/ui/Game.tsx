@@ -23,6 +23,7 @@ import { LegalFooter } from './components/LegalFooter'
 
 const NOTICE_TEXTS: Record<string, string> = {
   alreadyGuessed: strings.alreadyGuessed,
+  guessFailed: strings.guessFailed,
 }
 
 interface GameProps {

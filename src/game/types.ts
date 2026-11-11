@@ -29,6 +29,9 @@ export interface SaveState {
   guesses: GuessRecord[]
   status: GameStatus
   date: string
+  // The day's answer, known only once the round is over (the server reveals
+  // it on a win or after the last guess). Boards saved before 0.11.0 lack it.
+  answerId?: string
 }
 
 export interface StatsState {
@@ -40,9 +43,8 @@ export interface StatsState {
   lastWinDate: string | null
 }
 
-// What a round is played with: the pool and the derived answer order.
+// What a round is played with: the pool. The answer is not part of it: the
+// server decides it (/api/guess) and reveals it only when the round ends.
 export interface GameData {
   artists: Artist[]
-  // Ordered artist ids; index = day number (see game/daily.ts).
-  schedule: string[]
 }

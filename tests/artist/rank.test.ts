@@ -74,6 +74,6 @@ describe('rankBySpotify', () => {
 describe('validateGameData', () => {
   it('rejects a dataset where two artists share a rank', () => {
     const artists = [artist(1, { popularityRank: 1 }), artist(2, { popularityRank: 1 })]
-    expect(validateGameData({ artists, schedule: ['Q1'] })).toBeNull()
+    expect(validateGameData({ artists })).toBeNull()
   })
 })

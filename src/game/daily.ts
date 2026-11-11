@@ -102,6 +102,11 @@ export function answerForDay(schedule: string[], dayNumber: number): string {
   return schedule[idx]
 }
 
+// The Israeli calendar day of a day number (inverse of dayNumberFor).
+export function dateForDayNumber(dayNumber: number, launch = LAUNCH_DATE): string {
+  return toYmd(parseYmd(launch) + dayNumber * 86_400_000)
+}
+
 function toYmd(ms: number): string {
   return new Date(ms).toISOString().slice(0, 10)
 }

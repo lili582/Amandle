@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { validateGameData, isDataFresh, loadGameData, scheduleFor, _resetDataLoaderCache } from '../../src/data/dataLoader'
+import { validateGameData, isDataFresh, loadGameData, _resetDataLoaderCache } from '../../src/data/dataLoader'
 import { DATA_CACHE_TTL_MS, MIN_LISTENERS_IL } from '../../src/config'
 import type { Artist } from '../../src/artist/types'
 import { makeArtist } from '../fixtures'
@@ -20,7 +20,6 @@ const artistB: Artist = { ...artistA, id: 'rita', nameHe: 'ריטה', popularity
 
 const goodJson = {
   artists: [artistA, artistB],
-  schedule: ['omer-adam', 'rita'],
 }
 
 const ENTITY = 'http://www.wikidata.org/entity/'
@@ -70,16 +69,15 @@ describe('validateGameData', () => {
     const result = validateGameData(goodJson)
     expect(result).not.toBeNull()
     expect(result?.artists).toHaveLength(2)
-    expect(result?.schedule).toEqual(goodJson.schedule)
+    expect(result).toEqual({ artists: goodJson.artists })
   })
 
   it('rejects non-objects and empty/missing arrays', () => {
     expect(validateGameData(null)).toBeNull()
     expect(validateGameData('x')).toBeNull()
     expect(validateGameData({})).toBeNull()
-    expect(validateGameData({ artists: [], schedule: [] })).toBeNull()
+    expect(validateGameData({ artists: [] })).toBeNull()
     expect(validateGameData({ ...goodJson, artists: [] })).toBeNull()
-    expect(validateGameData({ ...goodJson, schedule: [] })).toBeNull()
   })
 
   it('rejects artists missing required fields', () => {
@@ -95,8 +93,12 @@ describe('validateGameData', () => {
     ).toBeNull()
   })
 
-  it('rejects schedules referencing unknown artist ids', () => {
-    expect(validateGameData({ ...goodJson, schedule: ['does-not-exist'] })).toBeNull()
+  it('rejects a duplicated artist id', () => {
+    expect(validateGameData({ artists: [artistA, { ...artistA, popularityRank: 2 }] })).toBeNull()
+  })
+
+  it('drops a schedule left in an old cached copy', () => {
+    expect(validateGameData({ ...goodJson, schedule: ['rita'] })).not.toHaveProperty('schedule')
   })
 })
 
@@ -118,48 +120,12 @@ describe('isDataFresh', () => {
   })
 })
 
-describe('scheduleFor', () => {
-  it('never picks an answer with no known year (the breakthrough tile would have no arrow)', () => {
-    const noYear = { ...artistA, id: 'no-year', debutYear: 0, breakthroughYear: 0 }
-    const hitOnly = { ...artistA, id: 'hit-only', debutYear: 0, breakthroughYear: 2015 }
-    const schedule = scheduleFor([artistA, artistB, noYear, hitOnly])
-    expect(schedule).not.toContain('no-year')
-    expect(schedule).toContain('hit-only')
-  })
-
-  it('only uses eligible artists', () => {
-    const artists = [artistA, artistB, { ...artistA, id: 'x', answerEligible: false }]
-    const schedule = scheduleFor(artists)
-    expect(new Set(schedule)).toEqual(new Set(['omer-adam', 'rita']))
-  })
-
-  it('a change at the margin of the pool leaves most days untouched', () => {
-    const pool = Array.from({ length: 250 }, (_, i) => makeArtist({ id: `Q${i}`, nameHe: String(i) }))
-    const before = scheduleFor(pool).slice(0, 365)
-    const after = scheduleFor([...pool.slice(0, 249), makeArtist({ id: 'Qnew', nameHe: 'n' })]).slice(0, 365)
-    const same = before.filter((id, d) => after[d] === id).length
-    expect(same / 365).toBeGreaterThan(0.9)
-  })
-
-  it('never repeats an answer within 60 days', () => {
-    const pool = Array.from({ length: 100 }, (_, i) => makeArtist({ id: `Q${i}`, nameHe: String(i) }))
-    const s = scheduleFor(pool)
-    for (let d = 0; d + 60 < 400; d++) expect(new Set(s.slice(d, d + 61)).size).toBe(61)
-  })
-
-  it('is deterministic for the same pool', () => {
-    expect(scheduleFor([artistA, artistB])).toEqual(scheduleFor([artistA, artistB]))
-  })
-})
-
 describe('loadGameData', () => {
   it('builds the dataset from the Wikidata response', async () => {
     const result = await loadGameData({ fetchImpl: wikidata() })
     expect(result.source).toBe('network')
-    expect(result.data.schedule.length).toBeGreaterThan(0)
-    for (const id of result.data.schedule) {
-      expect(result.data.artists.some((a) => a.id === id)).toBe(true)
-    }
+    // The answer is the server's business: nothing in the browser data names it.
+    expect(result.data).not.toHaveProperty('schedule')
     const rank = Object.fromEntries(result.data.artists.map((a) => [a.id, a.popularityRank]))
     expect(rank).toEqual({ Q2: 1, Q1: 2 })
   })
@@ -208,7 +174,7 @@ describe('loadGameData', () => {
     idb.read.mockResolvedValue({
       key: 'dataset:v4',
       ts: Date.now(),
-      data: { artists: [], schedule: [] },
+      data: { artists: [] },
     })
     const result = await loadGameData({ fetchImpl: wikidata() })
     expect(result.source).toBe('network')
