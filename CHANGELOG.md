@@ -2,6 +2,14 @@
 
 All notable changes to Amandle. Versions follow [SemVer](https://semver.org/).
 
+## [0.11.2] - 2026-11-15
+
+### Changed
+- סטפן לגר's genre tile is פופ (was מזרחית).
+
+### Added
+- היי פייב, the 1996–2000 boy band (hand-checked in `curatedArtists.ts`).
+
 ## [0.11.1] - 2026-11-11
 
 ### Changed

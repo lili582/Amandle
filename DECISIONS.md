@@ -971,3 +971,16 @@ listener numbers; the two removed ones are in `EXCLUDED_QIDS`.
   their Spotify listener rank (גזוז #129, בן זיני #344), so they are in the
   game from the next deploy; the next two-week build ranks them for real.
 
+## 0.11.2 — סטפן לגר is pop; היי פייב joins (2026-11-15)
+
+Lili's request.
+- `GENRE_OVERRIDES`: סטפן לגר (Q47402082) → pop (was mizrahi by override,
+  hiphop on Wikidata).
+- היי פייב (Q7041204), hand-checked against Hebrew Wikipedia: boy band of 5
+  male singers, formed 1996, first album and hits 1997, broke up 2000; pop.
+  Spotify profile `2I0gmzpfcnvaZ5xdWtgKb4` ("Hi Five", ~34K monthly
+  listeners; the "Hfive" profile with 2 listeners is not theirs).
+- The live `pool.json` (not in git) was edited to add them at their listener
+  rank (#321). The pool stays at 350, so the artist with the fewest listeners,
+  האחים צברי, fell out of it, as the next build would do too.
+
