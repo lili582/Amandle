@@ -33,7 +33,7 @@ export const GENRE_OVERRIDES: Readonly<Record<string, Genre>> = {
   Q2898233: 'pop', // רוני דלומי (was rock)
   Q12405808: 'mizrahi', // דיקלה (was pop)
   Q7029966: 'rock', // מרסדס בנד (was jazz-soul)
-  Q47402082: 'mizrahi', // סטפן לגר (was hiphop)
+  Q47402082: 'pop', // סטפן לגר (was hiphop; mizrahi until 0.11.2)
   Q2910872: 'pop', // מתי כספי (was jazz-soul)
   Q66828275: 'mizrahi', // שחר סאול (was hiphop)
   Q66990446: 'indie-alt', // עטר מיינר (was jazz-soul)

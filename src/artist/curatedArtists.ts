@@ -196,6 +196,9 @@ export const CURATED_ARTISTS: readonly CuratedArtist[] = [
   // (see EXCLUDED_QIDS). Checked against Hebrew Wikipedia and Wikidata.
   { qid: 'Q62422515', nameHe: 'בן זיני', nameEn: 'Ben Zini', spotify: '5y4NLV7Zuivr7A7qJV5Obt', type: 'solo', members: 1, gender: 'male', genre: 'pop', debut: 2017, breakthrough: 2017, born: 1996 },
   { qid: 'Q12404891', nameHe: 'גזוז', nameEn: 'Gazoz', spotify: '35D8tJ4FAP4O0dUtCHGjCY', type: 'band', members: 9, gender: 'mixed', genre: 'rock', debut: 1979, breakthrough: 1979, born: 1978, aliases: ['להקת גזוז'] },
+  // Nov 15: asked for by the owner. Boy band 1996-2000 (5 singers); first
+  // album and first hits in 1997.
+  { qid: 'Q7041204', nameHe: 'היי פייב', nameEn: 'Hi Five', spotify: '2I0gmzpfcnvaZ5xdWtgKb4', type: 'band', members: 5, gender: 'male', genre: 'pop', debut: 1997, breakthrough: 1997, born: 1996, aliases: ['Hi Five', 'hfive', 'היי-פייב'] },
 ]
 
 const byQid = new Map(CURATED_ARTISTS.map((c) => [c.qid, c]))
